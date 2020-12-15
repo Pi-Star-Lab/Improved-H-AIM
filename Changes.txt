@@ -124,5 +124,6 @@ Added this changes file.
 Changed application version to 1.1a
 Amended the readme.md in the root of the repository.
 Added sample files.
+Removed other misc files, like run_test.csv
 
 Detailed changes may be viewed in the diffs of commits.
