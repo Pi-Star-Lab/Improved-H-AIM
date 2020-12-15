@@ -1,8 +1,5 @@
 H-AIM with Adaptive Signal Timing and Signal Actuation
 ==============
-
-Code Base
-==============
 This is was taken from the AIM codebase authored by Tsz-Chiu Au, available here:
 http://www.cs.utexas.edu/~aim/ under "The Hybrid-AIM Simulator" heading (last accessed 10/30/2020).
 
