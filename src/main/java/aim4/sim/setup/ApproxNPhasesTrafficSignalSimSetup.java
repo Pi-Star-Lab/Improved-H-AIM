@@ -27,51 +27,88 @@ SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
 CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
 OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-*/
+ */
 package aim4.sim.setup;
 
 import aim4.config.Debug;
 import aim4.config.Resources;
 import aim4.config.SimConfig;
 import aim4.driver.pilot.V2IPilot;
+import aim4.im.intersectionarch.ArchIntersection;
+import aim4.im.intersectionarch.ArchIntersectionFactory;
 import aim4.im.v2i.reservation.ReservationGridManager;
 import aim4.map.GridMap;
 import aim4.map.GridMapUtil;
+import aim4.map.actionmapping.ActionMappingFactory;
+import aim4.map.trafficbyturns.TrafficFlowReaderFactory;
+import aim4.map.trafficbyturns.TurnMovements;
 import aim4.sim.AutoDriverOnlySimulator;
 import aim4.sim.Simulator;
+import java.io.File;
 import expr.trb.DesignatedLanesExpr;
 
 /**
- * The setup for the simulator in which the intersections are controlled
- * by N-phases traffic signals.
+ * The setup for the simulator in which the intersections are controlled by
+ * N-phases traffic signals.
  */
-public class ApproxNPhasesTrafficSignalSimSetup extends BasicSimSetup
-                                                implements SimSetup {
+public class ApproxNPhasesTrafficSignalSimSetup extends BasicSimSetup implements SimSetup {
 
-  /** The name of the file containing the traffic signal phases */
-  private String trafficSignalPhaseFileName;
-  /** The name of the file containing the traffic volume information */
-  private String trafficVolumeFileName;
+    /**
+     * The name of the file containing the traffic signal phases
+     */
+    private String trafficSignalPhaseFileName;
+    /**
+     * The name of the file containing the traffic volume information
+     */
+    private String trafficVolumeFileName;
+    /**
+     * File for specification of turning policies and intersection architecture.
+     */
+    private ArchIntersection intersectionPoliciesAndArchitecture;
 
-  /////////////////////////////////
-  // CONSTRUCTORS
-  /////////////////////////////////
+    /////////////////////////////////
+    // CONSTRUCTORS
+    /////////////////////////////////
+    /**
+     * Create the setup for the simulator in which the intersections are
+     * controlled by N-phases traffic signals.
+     *
+     * @param basicSimSetup the basic simulator setup
+     * @param trafficSignalPhaseFileName the name of the file containing the
+     * traffic signal phase
+     */
+    public ApproxNPhasesTrafficSignalSimSetup(BasicSimSetup basicSimSetup,
+            String trafficSignalPhaseFileName) {
+        this(basicSimSetup, trafficSignalPhaseFileName, null, null);
 
-  /**
-   * Create the setup for the simulator in which the intersections are
-   * controlled by N-phases traffic signals.
-   *
-   * @param basicSimSetup               the basic simulator setup
-   * @param trafficSignalPhaseFileName  the name of the file containing the
-   *                                    traffic signal phase
-   */
-  public ApproxNPhasesTrafficSignalSimSetup(BasicSimSetup basicSimSetup,
-                                            String trafficSignalPhaseFileName) {
-    super(basicSimSetup);
+        this.trafficSignalPhaseFileName = trafficSignalPhaseFileName;
+        this.trafficVolumeFileName = null;
+    }
 
-    this.trafficSignalPhaseFileName = trafficSignalPhaseFileName;
-    this.trafficVolumeFileName = null;
-  }
+    /**
+     * Create the setup for the simulator in which the intersections are
+     * controlled by N-phases traffic signals.
+     *
+     * @param basicSimSetup the basic simulator setup
+     * @param trafficSignalPhaseFileName the name of the file containing the
+     * traffic signal phase
+     * @param turnMovements Specifies flow and turn movements
+     * @param architectureFile File that contains information about intersection
+     * architecture and turning policies.
+     */
+    public ApproxNPhasesTrafficSignalSimSetup(BasicSimSetup basicSimSetup,
+            String trafficSignalPhaseFileName, TurnMovements turnMovements, File architectureFile) {
+        super(basicSimSetup);
+
+        this.trafficSignalPhaseFileName = trafficSignalPhaseFileName;
+        this.trafficVolumeFileName = null;
+        this.turnMovements = turnMovements;
+        if (architectureFile != null) {
+            intersectionPoliciesAndArchitecture = ArchIntersectionFactory.getIntersectionArchitectureFromXMLFile(architectureFile);
+        } else {
+            intersectionPoliciesAndArchitecture = null;
+        }
+    }
 
 //  public ApproxNPhasesTrafficSignalSimSetup(int columns, int rows,
 //                                     double laneWidth, double speedLimit,
@@ -83,64 +120,64 @@ public class ApproxNPhasesTrafficSignalSimSetup extends BasicSimSetup
 //          medianSize, distanceBetween, trafficLevel,
 //          stopDistBeforeIntersection);
 //  }
+    /////////////////////////////////
+    // PUBLIC METHODS
+    /////////////////////////////////
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public Simulator getSimulator() {
+        double currentTime = 0.0;
+        GridMap layout = new GridMap(currentTime,
+                numOfColumns,
+                numOfRows,
+                laneWidth,
+                speedLimit,
+                lanesPerRoad,
+                medianSize,
+                distanceBetween, intersectionPoliciesAndArchitecture);
+        Resources.map = layout;
 
+        ReservationGridManager.Config gridConfig
+                = new ReservationGridManager.Config(SimConfig.TIME_STEP,
+                        SimConfig.GRID_TIME_STEP,
+                        DesignatedLanesExpr.SAFETY_BUFFER_METERS,
+                        DesignatedLanesExpr.SAFETY_BUFFER_SECONDS,
+                        DesignatedLanesExpr.EXIT_TILE_SAFETY_BUFFER_SECONDS,
+                        true,
+                        1.0);
 
-  /////////////////////////////////
-  // PUBLIC METHODS
-  /////////////////////////////////
+        Debug.SHOW_VEHICLE_COLOR_BY_MSG_STATE = false;
 
-  /**
-   * Set the traffic volume according to the specification in a file.
-   *
-   * @param trafficVolumeFileName  the name of the file containing the
-   *                               traffic volume information
-   */
-  public void setTrafficVolume(String trafficVolumeFileName) {
-    this.trafficVolumeFileName = trafficVolumeFileName;
-  }
+        GridMapUtil.setApproxNPhasesTrafficLightManagers(
+                layout, currentTime, gridConfig, trafficSignalPhaseFileName, intersectionPoliciesAndArchitecture);
+        if (turnMovements != null && this.intersectionPoliciesAndArchitecture != null) {
+            GridMapUtil.setLaneRestrictedSpawnDestSpawnPoints(layout, turnMovements);
+        } else if (turnMovements != null) {
+            GridMapUtil.setSpawnDestSpawnPoints(layout, turnMovements);
+        } else {
+            if (numOfColumns == 1 && numOfRows == 1) {
+                GridMapUtil.setUniformRatioSpawnPoints(layout, trafficVolumeFileName, trafficLevel);
+                // GridLayoutUtil.setUniformTurnBasedSpawnPoints(layout, trafficLevel);
+            } else {
+                GridMapUtil.setUniformRandomSpawnPoints(layout, trafficLevel);
+            }
+        }
 
-  /**
-   * {@inheritDoc}
-   */
-  @Override
-  public Simulator getSimulator() {
-    double currentTime = 0.0;
-    GridMap layout = new GridMap(currentTime,
-                                       numOfColumns,
-                                       numOfRows,
-                                       laneWidth,
-                                       speedLimit,
-                                       lanesPerRoad,
-                                       medianSize,
-                                       distanceBetween);
+        V2IPilot.DEFAULT_STOP_DISTANCE_BEFORE_INTERSECTION
+                = stopDistBeforeIntersection;
 
-    Resources.map = layout;
-    
-    ReservationGridManager.Config gridConfig =
-      new ReservationGridManager.Config(SimConfig.TIME_STEP,
-                                        SimConfig.GRID_TIME_STEP,
-                                        DesignatedLanesExpr.SAFETY_BUFFER_METERS,
-                                        DesignatedLanesExpr.SAFETY_BUFFER_SECONDS,
-                                        DesignatedLanesExpr.SAFETY_BUFFER_SECONDS,
-                                        true,
-                                        1.0);
-
-    Debug.SHOW_VEHICLE_COLOR_BY_MSG_STATE = false;
-
-    GridMapUtil.setApproxNPhasesTrafficLightManagers(
-        layout, currentTime, gridConfig, trafficSignalPhaseFileName);
-
-    if (numOfColumns == 1 && numOfRows == 1) {
-      // here --menie
-      GridMapUtil.setUniformRatioSpawnPoints(layout, trafficVolumeFileName, trafficLevel);
-      //GridMapUtil.setUniformTurnBasedSpawnPoints(layout, trafficLevel);
-    } else {
-      GridMapUtil.setUniformRandomSpawnPoints(layout, trafficLevel);
+        return new AutoDriverOnlySimulator(layout, turnMovements);
     }
 
-    V2IPilot.DEFAULT_STOP_DISTANCE_BEFORE_INTERSECTION =
-      stopDistBeforeIntersection;
-
-    return new AutoDriverOnlySimulator(layout);
-  }
+    /**
+     * Set the traffic volume according to the specification in a file.
+     *
+     * @param trafficVolumeFileName the name of the file containing the traffic
+     * volume information
+     */
+    public void setTrafficVolume(String trafficVolumeFileName) {
+        this.trafficVolumeFileName = trafficVolumeFileName;
+    }
 }

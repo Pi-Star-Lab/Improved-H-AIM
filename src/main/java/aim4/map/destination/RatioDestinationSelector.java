@@ -108,7 +108,7 @@ public class RatioDestinationSelector implements DestinationSelector {
   public Road selectDestination(Lane currentLane) {
     Road currentRoad = Debug.currentMap.getRoad(currentLane);
     int laneId = currentLane.getId();
-    double prob = Util.random.nextDouble();
+    double prob = Util.RANDOM_NUM_GEN.nextDouble();
     if (prob < leftTurnProb.get(laneId)) {
       return trafficVolume.getLeftTurnRoad(currentRoad);
     } else if (prob >= 1.0 - rightTurnProb.get(laneId)) {

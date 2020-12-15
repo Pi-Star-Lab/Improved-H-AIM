@@ -1,0 +1,70 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<intersection>
+    <!--Direction, incoming, outgoing, speed-->
+    <road>EAST, 3, 2, 20.1, 9.950248756218905472636815920398</road> <!--45 mph from http://data-uplan.opendata.arcgis.com/datasets/approximate-speed-limit-2017?geometry=-112.028%2C40.696%2C-112.022%2C40.697 and double checked on Google Maps Street View-->
+    <road>SOUTH, 4, 2, 20.1, 9.950248756218905472636815920398</road> <!--45 mph from http://data-uplan.opendata.arcgis.com/datasets/approximate-speed-limit-2017?geometry=-112.028%2C40.696%2C-112.022%2C40.697 and double checked on Google Maps Street View-->
+    <road>WEST, 3, 2, 20.1, 9.950248756218905472636815920398</road> <!--45 mph from http://data-uplan.opendata.arcgis.com/datasets/approximate-speed-limit-2017?geometry=-112.028%2C40.696%2C-112.022%2C40.697 and double checked on Google Maps Street View-->
+    <road>NORTH, 4, 2, 20.1, 9.950248756218905472636815920398</road> <!--45 mph from http://data-uplan.opendata.arcgis.com/datasets/approximate-speed-limit-2017?geometry=-112.028%2C40.696%2C-112.022%2C40.697 and double checked on Google Maps Street View-->
+	
+	 <!--Connections-->
+	<direction>
+	    <from_to>EAST, EAST</from_to>
+		<vehicle type="HUMAN">(1, 0), (2, 1)</vehicle>
+        <vehicle type="AUTO">(1, 0), (2, 1)</vehicle>
+    </direction>
+	<direction>
+		<from_to>EAST, NORTH</from_to>
+		<vehicle type="HUMAN">(0, 0)</vehicle>
+        <vehicle type="AUTO">(0, 0), (1, 1)</vehicle>
+    </direction>
+	<direction>
+		<from_to>EAST, SOUTH</from_to>
+		<vehicle type="HUMAN">(2, 1)</vehicle>
+        <vehicle type="AUTO">(2, 1)</vehicle>
+    </direction>
+	<direction>
+		<from_to>WEST, WEST</from_to>
+		<vehicle type="HUMAN">(1, 0), (2, 1)</vehicle>
+        <vehicle type="AUTO">(1, 0), (2, 1)</vehicle>
+    </direction>
+	<direction>
+		<from_to>WEST, NORTH</from_to>
+		<vehicle type="HUMAN">(2, 1)</vehicle>
+        <vehicle type="AUTO">(2, 1)</vehicle>
+    </direction>
+	<direction>
+		<from_to>WEST, SOUTH</from_to>
+		<vehicle type="HUMAN">(0, 0)</vehicle>
+        <vehicle type="AUTO">(0, 0), (1, 1)</vehicle>
+	</direction>
+	<direction>
+		<from_to>NORTH, NORTH</from_to>
+		<vehicle type="HUMAN">(1, 0), (2, 1)</vehicle>
+        <vehicle type="AUTO">(1, 0), (2, 1)</vehicle>
+    </direction>
+	<direction>
+		<from_to>NORTH, EAST</from_to>
+		<vehicle type="HUMAN">(3, 1)</vehicle>
+        <vehicle type="AUTO">(2, 0), (3, 1)</vehicle>
+    </direction>
+	<direction>
+		<from_to>NORTH, WEST</from_to>
+		<vehicle type="HUMAN">(0, 0)</vehicle>
+        <vehicle type="AUTO">(0, 0), (1, 1)</vehicle>
+	</direction>
+	<direction>
+		<from_to>SOUTH, SOUTH</from_to>
+		<vehicle type="HUMAN">(1, 0), (2, 1)</vehicle>
+        <vehicle type="AUTO">(1, 0), (2, 1)</vehicle>
+    </direction>
+	<direction>
+		<from_to>SOUTH, WEST</from_to>
+		<vehicle type="HUMAN">(3, 1)</vehicle>
+        <vehicle type="AUTO">(2, 0), (3, 1)</vehicle>
+    </direction>
+	<direction>
+		<from_to>SOUTH, EAST</from_to>
+		<vehicle type="HUMAN">(0, 0)</vehicle>
+        <vehicle type="AUTO">(0, 0), (1, 1)</vehicle>
+    </direction>
+</intersection>

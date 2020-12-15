@@ -120,7 +120,7 @@ public interface BasicMap {
   /**
    * Get the list of spawn points.
    *
-   * @return the lkist of spawn points
+   * @return the list of spawn points
    */
   List<SpawnPoint> getSpawnPoints();
 

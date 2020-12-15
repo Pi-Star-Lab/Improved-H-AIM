@@ -43,6 +43,8 @@ import javax.swing.JScrollPane;
 
 import aim4.gui.parampanel.AutoDriverOnlyParamPanel;
 import aim4.gui.parampanel.TrafficSignalParamPanel;
+import aim4.map.actionmapping.ActionMappingFactory;
+import aim4.map.trafficbyturns.TrafficFlowReaderFactory;
 import aim4.sim.setup.ApproxStopSignSimSetup;
 import aim4.sim.setup.ApproxNPhasesTrafficSignalSimSetup;
 import aim4.sim.setup.AutoDriverOnlySimSetup;
@@ -54,117 +56,135 @@ import aim4.sim.setup.SimSetup;
  */
 public class SimSetupPanel extends JPanel implements ItemListener {
 
-  private static final long serialVersionUID = 1L;
+    private static final long serialVersionUID = 1L;
 
-  final static String AUTO_DRIVER_ONLY_SETUP_PANEL = "AIM Protocol";
-  final static String TRAFFIC_SIGNAL_SETUP_PANEL = "Traffic Signals";
-  final static String STOP_SIGN_SETUP_PANEL = "Stop Signs";
+    final static String AUTO_DRIVER_ONLY_SETUP_PANEL = "AIM Protocol";
+    final static String TRAFFIC_SIGNAL_SETUP_PANEL = "Traffic Signals";
+    final static String STOP_SIGN_SETUP_PANEL = "Stop Signs";
 
-  /** The combox box */
-  private JComboBox comboBox;
-  /** The card panel */
-  private JPanel cards; //a panel that uses CardLayout
-  /** The card layout */
-  private CardLayout cardLayout;
-  /** the auto driver only simulation setup panel */
-  private AutoDriverOnlyParamPanel autoDriverOnlySetupPanel;
-  /** The traffic signal setup panel */
-  private TrafficSignalParamPanel trafficSignalSetupPanel;
-  /** The simulation setup panel */
-  private BasicSimSetup simSetup;
+    /**
+     * The combox box
+     */
+    private JComboBox comboBox;
+    /**
+     * The card panel
+     */
+    private JPanel cards; //a panel that uses CardLayout
+    /**
+     * The card layout
+     */
+    private CardLayout cardLayout;
+    /**
+     * the auto driver only simulation setup panel
+     */
+    private AutoDriverOnlyParamPanel autoDriverOnlySetupPanel;
+    /**
+     * The traffic signal setup panel
+     */
+    private TrafficSignalParamPanel trafficSignalSetupPanel;
+    /**
+     * The simulation setup panel
+     */
+    private BasicSimSetup simSetup;
 
-  /**
-   * Create a simulation setup panel
-   *
-   * @param initSimSetup  the initial simulation setup
-   */
-  public SimSetupPanel(BasicSimSetup initSimSetup) {
-    this.simSetup = initSimSetup;
+    /**
+     * Create a simulation setup panel
+     *
+     * @param initSimSetup the initial simulation setup
+     */
+    public SimSetupPanel(BasicSimSetup initSimSetup) {
+        this.simSetup = initSimSetup;
 
-    // create the combo box pane
-    JPanel comboBoxPane = new JPanel(); //use FlowLayout
-    comboBoxPane.setBackground(Color.WHITE);
+        // create the combo box pane
+        JPanel comboBoxPane = new JPanel(); //use FlowLayout
+        comboBoxPane.setBackground(Color.WHITE);
 
-    String comboBoxItems[] =
-      { AUTO_DRIVER_ONLY_SETUP_PANEL,
-        TRAFFIC_SIGNAL_SETUP_PANEL,
-        STOP_SIGN_SETUP_PANEL };
-    comboBox = new JComboBox(comboBoxItems);
-    comboBox.setEditable(false);
-    comboBox.addItemListener(this);
-    comboBoxPane.add(comboBox);
+        String comboBoxItems[]
+                = {AUTO_DRIVER_ONLY_SETUP_PANEL,
+                    TRAFFIC_SIGNAL_SETUP_PANEL,
+                    STOP_SIGN_SETUP_PANEL};
+        comboBox = new JComboBox(comboBoxItems);
+        comboBox.setEditable(false);
+        comboBox.addItemListener(this);
+        comboBoxPane.add(comboBox);
 
-    // create the cards pane
-    cardLayout = new CardLayout();
-    cards = new JPanel(cardLayout);
+        // create the cards pane
+        cardLayout = new CardLayout();
+        cards = new JPanel(cardLayout);
 
-    // add the parameter panels
-    autoDriverOnlySetupPanel =
-      new AutoDriverOnlyParamPanel(simSetup);
-    addParamPanel(autoDriverOnlySetupPanel, AUTO_DRIVER_ONLY_SETUP_PANEL);
-    trafficSignalSetupPanel = new TrafficSignalParamPanel();
-    cards.add(trafficSignalSetupPanel, TRAFFIC_SIGNAL_SETUP_PANEL);
-    cards.add(new JPanel(), STOP_SIGN_SETUP_PANEL);
+        // add the parameter panels
+        autoDriverOnlySetupPanel
+                = new AutoDriverOnlyParamPanel(simSetup);
+        addParamPanel(autoDriverOnlySetupPanel, AUTO_DRIVER_ONLY_SETUP_PANEL);
+        trafficSignalSetupPanel = new TrafficSignalParamPanel();
+        cards.add(trafficSignalSetupPanel, TRAFFIC_SIGNAL_SETUP_PANEL);
+        cards.add(new JPanel(), STOP_SIGN_SETUP_PANEL);
 
-    // add the combo box pane and cards pane
-    setLayout(new BorderLayout());
-    add(comboBoxPane, BorderLayout.PAGE_START);
-    add(cards, BorderLayout.CENTER);
-  }
-
-  /**
-   * Add a parameter panel.
-   *
-   * @param paramPanel  the parameter panel
-   * @param paramLabel  the label of the parameter panel
-   */
-  private void addParamPanel(JPanel paramPanel, String paramLabel) {
-    JScrollPane scrollPane = new JScrollPane(paramPanel);
-    scrollPane.setBorder(BorderFactory.createEmptyBorder());
-    cards.add(scrollPane, paramLabel);
-  }
-
-  /**
-   * Create and return a simulation setup object.
-   *
-   * @return the simulation setup object
-   */
-  public SimSetup getSimSetup() {
-    if (comboBox.getSelectedIndex() == 0) {
-      AutoDriverOnlySimSetup simSetup2 = new AutoDriverOnlySimSetup(simSetup);
-      simSetup2.setTrafficLevel(autoDriverOnlySetupPanel.getTrafficRate());
-      simSetup2.setSpeedLimit(autoDriverOnlySetupPanel.getSpeedLimit());
-      simSetup2.setStopDistBeforeIntersection(
-        autoDriverOnlySetupPanel.getStopDistToIntersection());
-      simSetup2.setNumOfColumns(autoDriverOnlySetupPanel.getNumOfColumns());
-      simSetup2.setNumOfRows(autoDriverOnlySetupPanel.getNumOfRows());
-      simSetup2.setLanesPerRoad(autoDriverOnlySetupPanel.getLanesPerRoad());
-      return simSetup2;
-    } else if (comboBox.getSelectedIndex() == 1) {
-      // ApproxNPhasesTrafficSignalSimSetup simSetup2 =
-      //  new ApproxNPhasesTrafficSignalSimSetup(simSetup,
-      //                                         "src/main/resources/SignalPhases/AIM4Phases.csv");
-      // simSetup2.setTrafficVolume("src/main/resources/SignalPhases/AIM4Volumes.csv");
-      ApproxNPhasesTrafficSignalSimSetup simSetup2 =
-        new ApproxNPhasesTrafficSignalSimSetup(simSetup,
-                                               "/SignalPhases/AIM4Phases.csv");
-      simSetup2.setTrafficVolume("/SignalPhases/AIM4Volumes.csv");
-
-      simSetup2.setLanesPerRoad(trafficSignalSetupPanel.getLanesPerRoad());
-      simSetup2.setStopDistBeforeIntersection(1.0);
-      return simSetup2;
-    } else if (comboBox.getSelectedIndex() == 2) {
-      ApproxStopSignSimSetup simSetup2 =
-        new ApproxStopSignSimSetup(simSetup);
-      simSetup2.setTrafficLevel(autoDriverOnlySetupPanel.getTrafficRate());
-      simSetup2.setStopDistBeforeIntersection(
-        autoDriverOnlySetupPanel.getStopDistToIntersection());
-      return simSetup2;
-    } else {
-      throw new RuntimeException(
-          "SimSetupPane::getSimSetup(): not implemented yet");
+        // add the combo box pane and cards pane
+        setLayout(new BorderLayout());
+        add(comboBoxPane, BorderLayout.PAGE_START);
+        add(cards, BorderLayout.CENTER);
     }
-  }
+
+    /**
+     * Add a parameter panel.
+     *
+     * @param paramPanel the parameter panel
+     * @param paramLabel the label of the parameter panel
+     */
+    private void addParamPanel(JPanel paramPanel, String paramLabel) {
+        JScrollPane scrollPane = new JScrollPane(paramPanel);
+        scrollPane.setBorder(BorderFactory.createEmptyBorder());
+        cards.add(scrollPane, paramLabel);
+    }
+
+    /**
+     * Create and return a simulation setup object.
+     *
+     * @return the simulation setup object
+     */
+    public SimSetup getSimSetup() {
+        if (comboBox.getSelectedIndex() == 0) {
+            AutoDriverOnlySimSetup simSetup2;
+            if (autoDriverOnlySetupPanel.getTrafficfile() != null) {
+                simSetup2 = new AutoDriverOnlySimSetup(simSetup, TrafficFlowReaderFactory.getMovementsFromFile(autoDriverOnlySetupPanel.getTrafficfile(), ActionMappingFactory.getUDOTActionMapping()), null);
+            } else {
+                simSetup2 = new AutoDriverOnlySimSetup(simSetup, null, null);
+            }
+            
+            simSetup2.setTrafficLevel(autoDriverOnlySetupPanel.getTrafficRate());
+            simSetup2.setSpeedLimit(autoDriverOnlySetupPanel.getSpeedLimit());
+            simSetup2.setStopDistBeforeIntersection(
+                    autoDriverOnlySetupPanel.getStopDistToIntersection());
+            simSetup2.setNumOfColumns(autoDriverOnlySetupPanel.getNumOfColumns());
+            simSetup2.setNumOfRows(autoDriverOnlySetupPanel.getNumOfRows());
+            simSetup2.setLanesPerRoad(autoDriverOnlySetupPanel.getLanesPerRoad());
+            return simSetup2;
+        } else if (comboBox.getSelectedIndex() == 1) {
+            // ApproxNPhasesTrafficSignalSimSetup simSetup2 =
+            //  new ApproxNPhasesTrafficSignalSimSetup(simSetup,
+            //                                         "src/main/resources/SignalPhases/AIM4Phases.csv");
+            // simSetup2.setTrafficVolume("src/main/resources/SignalPhases/AIM4Volumes.csv");
+            ApproxNPhasesTrafficSignalSimSetup simSetup2
+                    = new ApproxNPhasesTrafficSignalSimSetup(simSetup,
+                            "/SignalPhases/AIM4Phases.csv");
+            simSetup2.setTrafficVolume("/SignalPhases/AIM4Volumes.csv");
+
+            simSetup2.setLanesPerRoad(trafficSignalSetupPanel.getLanesPerRoad());
+            simSetup2.setStopDistBeforeIntersection(1.0);
+            return simSetup2;
+        } else if (comboBox.getSelectedIndex() == 2) {
+            ApproxStopSignSimSetup simSetup2
+                    = new ApproxStopSignSimSetup(simSetup);
+            simSetup2.setTrafficLevel(autoDriverOnlySetupPanel.getTrafficRate());
+            simSetup2.setStopDistBeforeIntersection(
+                    autoDriverOnlySetupPanel.getStopDistToIntersection());
+            return simSetup2;
+        } else {
+            throw new RuntimeException(
+                    "SimSetupPane::getSimSetup(): not implemented yet");
+        }
+    }
 
   /**
    * {@inheritDoc}

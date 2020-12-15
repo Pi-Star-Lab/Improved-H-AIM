@@ -36,6 +36,7 @@ import aim4.config.Debug;
 import aim4.map.BasicMap;
 import aim4.map.Road;
 import aim4.map.lane.Lane;
+import aim4.util.Util;
 import expr.trb.DesignatedLanesExpr;
 import expr.trb.TrafficSignalExpr;
 import java.util.ArrayList;
@@ -90,17 +91,17 @@ public class TurnBasedDestinationSelector implements DestinationSelector {
         //boolean leftOrStright = false;
         boolean rightOrStright = indexInRoad == currentRoad.getLanes().size() - turnLanes;
 
-        boolean stright = !left && !right && !rightOrStright;
+        boolean straight = !left && !right && !rightOrStright;
         if (rightOrStright || currentRoad.getLanes().size() == 2) {
-                stright = Math.random() < 0.5;
+                straight = Util.RANDOM_NUM_GEN.nextDouble() < 0.5;
         }
 
         if (left && right) {
-            stright = Math.random() < 0.4;
-            left = Math.random() < 0.5;
+            straight = Util.RANDOM_NUM_GEN.nextDouble() < 0.4;
+            left = Util.RANDOM_NUM_GEN.nextDouble() < 0.5;
         }
 
-        if (stright) {
+        if (straight) {
             return currentRoad;
         } else if (left) {
             if (currentRoad.getName().equals("1st Street E")) {
@@ -187,10 +188,10 @@ public class TurnBasedDestinationSelector implements DestinationSelector {
 //        //boolean leftOrStright = false;
 //        boolean rightOrStright = indexInRoad == currentRoad.getLanes().size() - turnLanes && DesignatedLanesExpr.ALLOW_STRIGHT_ON_RIGHT;
 //
-//        boolean stright = !left && !right && !rightOrStright;
+//        boolean straight = !left && !right && !rightOrStright;
 //        
 //        if (rightOrStright || currentRoad.getLanes().size() == 2) {
-//            stright = true;
+//            straight = true;
 //        }
 //        
 //        if (rightOrStright){
@@ -198,10 +199,10 @@ public class TurnBasedDestinationSelector implements DestinationSelector {
 //        }
 //
 //        if (left && right) {
-//            stright = true;
+//            straight = true;
 //        }
 //
-//        if (stright) {
+//        if (straight) {
 //            ans.add(currentRoad);
 //        } if (left) {
 //            if (currentRoad.getName().equals("1st Street E")) {
@@ -243,10 +244,10 @@ public class TurnBasedDestinationSelector implements DestinationSelector {
         //heading: 0 - Right, 1 - Stright, 2 - Left
         boolean left =  DesignatedLanesExpr.turnAllowed(indexInRoad,2, currentRoad);
         boolean right =  DesignatedLanesExpr.turnAllowed(indexInRoad,0, currentRoad);
-        boolean stright =  DesignatedLanesExpr.turnAllowed(indexInRoad,1, currentRoad);
+        boolean straight =  DesignatedLanesExpr.turnAllowed(indexInRoad,1, currentRoad);
         
 
-        if (stright) {
+        if (straight) {
             ans.add(currentRoad);
         } if (left) {
             if (currentRoad.getName().equals("1st Street E")) {

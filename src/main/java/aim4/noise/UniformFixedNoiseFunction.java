@@ -59,6 +59,6 @@ public class UniformFixedNoiseFunction implements NoiseFunction {
    */
   @Override
   public double apply(double trueValue) {
-    return trueValue + (Util.random.nextDouble() * range * 2) - range;
+    return trueValue + (Util.RANDOM_NUM_GEN.nextDouble() * range * 2) - range;
   }
 }

@@ -27,7 +27,7 @@ SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
 CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
 OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-*/
+ */
 package aim4.map;
 
 import java.awt.geom.Point2D;
@@ -37,315 +37,361 @@ import java.util.List;
 import aim4.config.SimConfig;
 import aim4.config.SimConfig.VEHICLE_TYPE;
 import aim4.map.lane.Lane;
+import aim4.map.trafficbyturns.LaneRestrictedFileSpawnSpecGenerator;
 import aim4.vehicle.VehicleSpec;
 
 /**
  * A spawn point.
  */
 public class SpawnPoint {
+    /////////////////////////////////
+    // NESTED CLASSES
+    /////////////////////////////////
 
-  /////////////////////////////////
-  // NESTED CLASSES
-  /////////////////////////////////
+    // TODO: make it sortable according to the time
+    /**
+     * The specification of a spawn.
+     */
+    public static class SpawnSpec {
 
-  // TODO: make it sortable according to the time
+        /**
+         * The spawn time
+         */
+        double spawnTime;
+        /**
+         * The vehicle specification
+         */
+        VehicleSpec vehicleSpec;
+        /**
+         * The destination road
+         */
+        Road destinationRoad;
+        /**
+         * whether it's a human driver
+         */
+        private SimConfig.VEHICLE_TYPE vehicleType;
 
-  /**
-   * The specification of a spawn.
-   */
-  public static class SpawnSpec {
-    /** The spawn time */
-    double spawnTime;
-    /** The vehicle specification */
-    VehicleSpec vehicleSpec;
-    /** The destination road */
-    Road destinationRoad;
-    /** whether it's a human driver */
-	private SimConfig.VEHICLE_TYPE vehicleType;
+        /**
+         * Create a spawn specification.
+         *
+         * @param spawnTime the spawn time
+         * @param vehicleSpec the vehicle specification
+         * @param destinationRoad the destination road
+         * @param human	whether it's a human driver
+         */
+        public SpawnSpec(double spawnTime, VehicleSpec vehicleSpec,
+                Road destinationRoad, SimConfig.VEHICLE_TYPE vehicleType) {
+            this.spawnTime = spawnTime;
+            this.vehicleSpec = vehicleSpec;
+            this.destinationRoad = destinationRoad;
+            this.vehicleType = vehicleType;
+        }
+
+        /**
+         * Get the spawn time.
+         *
+         * @return the spawn time
+         */
+        public double getSpawnTime() {
+            return spawnTime;
+        }
+
+        /**
+         * Get the vehicle specification.
+         *
+         * @return the vehicle specification
+         */
+        public VehicleSpec getVehicleSpec() {
+            return vehicleSpec;
+        }
+
+        /**
+         * Check whether it's a human driver
+         *
+         * @return yes - it's a human driver; no - otherwise.
+         */
+        public boolean isHuman() {
+            return (this.vehicleType == VEHICLE_TYPE.HUMAN);
+        }
+
+        /**
+         * Check whether it's a informed human driver
+         *
+         * @return
+         */
+        public boolean isInformedHuman() {
+            return (this.vehicleType == VEHICLE_TYPE.CRUISE);
+        }
+
+        /**
+         * Return vehicle type
+         *
+         * @return
+         */
+        public VEHICLE_TYPE getVehicleType() {
+            return this.vehicleType;
+        }
+
+        /**
+         * Get the destination road.
+         *
+         * @return the destination road
+         */
+        public Road getDestinationRoad() {
+            return destinationRoad;
+        }
+    }
 
     /**
-     * Create a spawn specification.
+     * The interface of the spawn specification genreator.
+     */
+    public static interface SpawnSpecGenerator {
+
+        /**
+         * Advance the time step.
+         *
+         * @param spawnPoint the spawn point
+         * @param timeStep the time step
+         * @return the list of spawn spec generated in this time step.
+         */
+        List<SpawnSpec> act(SpawnPoint spawnPoint, double timeStep);
+
+        SpawnSpec act(SpawnPoint spawnPoint, double timeStep, VEHICLE_TYPE vehicleType, Road destinationRoad);
+
+        List<SpawnSpec> act(SpawnPoint spawnPoint, double timeStep, VEHICLE_TYPE vehicleType);
+
+        /**
+         * To inform the spawning point that the vehicle is successfully
+         * generated.
+         */
+        void vehicleGenerated();
+    }
+
+    /////////////////////////////////
+    // PRIVATE FIELDS
+    /////////////////////////////////
+    /**
+     * The current time
+     */
+    private double currentTime;
+    /**
+     * The initial position of the vehicle
+     */
+    private Point2D pos;
+    /**
+     * The initial heading of the vehicle
+     */
+    private double heading;
+    /**
+     * The initial steering angle of the vehicle
+     */
+    private double steeringAngle;
+    /**
+     * The initial acceleration
+     */
+    private double acceleration;
+    /**
+     * The lane
+     */
+    private Lane lane;
+    /**
+     * The area in which there should not have any other vehicle when the
+     * vehicle is spawned.
+     */
+    private Rectangle2D noVehicleZone;
+    /**
+     * The vehicle spec chooser
+     */
+    private SpawnSpecGenerator vehicleSpecChooser;
+
+    /////////////////////////////////
+    // CONSTRUCTORS
+    /////////////////////////////////
+    /**
+     * Create a spawn point.
      *
-     * @param spawnTime        the spawn time
-     * @param vehicleSpec      the vehicle specification
-     * @param destinationRoad  the destination road
-     * @param human			   whether it's a human driver
+     * @param currentTime the current time
+     * @param pos the initial position
+     * @param heading the initial heading
+     * @param steeringAngle the initial steering angle
+     * @param acceleration the initial acceleration
+     * @param lane the lane
+     * @param noVehicleZone the no vehicle zone
+     * @param vehicleSpecChooser the vehicle spec chooser
      */
-    public SpawnSpec(double spawnTime, VehicleSpec vehicleSpec,
-                     Road destinationRoad, SimConfig.VEHICLE_TYPE vehicleType) {
-      this.spawnTime = spawnTime;
-      this.vehicleSpec = vehicleSpec;
-      this.destinationRoad = destinationRoad;
-      this.vehicleType = vehicleType;
+    public SpawnPoint(double currentTime,
+            Point2D pos,
+            double heading,
+            double steeringAngle,
+            double acceleration,
+            Lane lane,
+            Rectangle2D noVehicleZone,
+            SpawnSpecGenerator vehicleSpecChooser) {
+        this.currentTime = currentTime;
+        this.pos = pos;
+        this.heading = heading;
+        this.steeringAngle = steeringAngle;
+        this.acceleration = acceleration;
+        this.lane = lane;
+        this.noVehicleZone = noVehicleZone;
+        this.vehicleSpecChooser = vehicleSpecChooser;
     }
 
     /**
-     * Get the spawn time.
+     * Create a spawn point.
      *
-     * @return the spawn time
+     * @param currentTime the current time
+     * @param pos the initial position
+     * @param heading the initial heading
+     * @param steeringAngle the initial steering angle
+     * @param acceleration the initial acceleration
+     * @param lane the lane
+     * @param noVehicleZone the no vehicle zone
      */
-    public double getSpawnTime() {
-      return spawnTime;
+    public SpawnPoint(double currentTime,
+            Point2D pos,
+            double heading,
+            double steeringAngle,
+            double acceleration,
+            Lane lane,
+            Rectangle2D noVehicleZone) {
+        this.currentTime = currentTime;
+        this.pos = pos;
+        this.heading = heading;
+        this.steeringAngle = steeringAngle;
+        this.acceleration = acceleration;
+        this.lane = lane;
+        this.noVehicleZone = noVehicleZone;
+        this.vehicleSpecChooser = null;
     }
 
-    /**
-     * Get the vehicle specification.
-     *
-     * @return the vehicle specification
-     */
-    public VehicleSpec getVehicleSpec() {
-      return vehicleSpec;
-    }
-
-    /**
-     * Check whether it's a human driver
-     * 
-     * @return yes - it's a human driver; no - otherwise.
-     */
-    public boolean isHuman() {
-    	return (this.vehicleType == VEHICLE_TYPE.HUMAN); 
-    }
-    
-    /**
-     * Check whether it's a informed human driver
-     * 
-     * @return
-     */
-    public boolean isInformedHuman() {
-    	return (this.vehicleType == VEHICLE_TYPE.CRUISE);
-    }
-    
-    /**
-     * Return vehicle type
-     * @return
-     */
-    public VEHICLE_TYPE getVehicleType() {
-    	return this.vehicleType;
-    }
-    
-    /**
-     * Get the destination road.
-     *
-     * @return the destination road
-     */public Road getDestinationRoad() {
-      return destinationRoad;
-    }
-  }
-
-
-  /**
-   * The interface of the spawn specification genreator.
-   */
-  public static interface SpawnSpecGenerator {
+    /////////////////////////////////
+    // PUBLIC METHODS
+    /////////////////////////////////
     /**
      * Advance the time step.
      *
-     * @param spawnPoint  the spawn point
-     * @param timeStep    the time step
-     * @return the list of spawn spec generated in this time step.
+     * @param timeStep the time step
+     * @return The list of spawn spec generated in this time step
      */
-    List<SpawnSpec> act(SpawnPoint spawnPoint, double timeStep);
-    SpawnSpec act(SpawnPoint spawnPoint, double timeStep, VEHICLE_TYPE vehicleType, Road destinationRoad);
-    /**
-     * To inform the spawning point that the vehicle is successfully generated.
-     */
-    void vehicleGenerated();
-  }
+    public List<SpawnSpec> act(double timeStep) {
+        assert vehicleSpecChooser != null;
+        List<SpawnSpec> spawnSpecs = vehicleSpecChooser.act(this, timeStep);
+        currentTime += timeStep;
+        return spawnSpecs;
+    }
 
+    public List<SpawnSpec> act(double timeStep, VEHICLE_TYPE vehicleType) {
+        assert vehicleSpecChooser != null;
 
-  /////////////////////////////////
-  // PRIVATE FIELDS
-  /////////////////////////////////
+        List<SpawnSpec> spawnSpecs;
+        //TODO!! This is bad design. It defeats the purpose of inheritance and needs to be fixed.
+        if (vehicleSpecChooser.getClass() == LaneRestrictedFileSpawnSpecGenerator.class) {
+            spawnSpecs = vehicleSpecChooser.act(this, timeStep, vehicleType);
+        } else {
+            spawnSpecs = vehicleSpecChooser.act(this, timeStep);
+        }
+        currentTime += timeStep;
+        return spawnSpecs;
+    }
 
-  /** The current time */
-  private double currentTime;
-  /** The initial position of the vehicle */
-  private Point2D pos;
-  /** The initial heading of the vehicle */
-  private double heading;
-  /** The initial steering angle of the vehicle */
-  private double steeringAngle;
-  /** The initial acceleration */
-  private double acceleration;
-  /** The lane */
-  private Lane lane;
-  /**
-   * The area in which there should not have any other vehicle when the
-   * vehicle is spawned.
-   */
-  private Rectangle2D noVehicleZone;
-  /** The vehicle spec chooser */
-  private SpawnSpecGenerator vehicleSpecChooser;
+    public void advance(double timeStep) {
+        currentTime += timeStep;
+    }
 
-  /////////////////////////////////
-  // CONSTRUCTORS
-  /////////////////////////////////
+    public SpawnSpec act(double timeStep, VEHICLE_TYPE vehicleType, Road destinationRoad) {
+        assert vehicleSpecChooser != null;
+        return vehicleSpecChooser.act(this, timeStep, vehicleType, destinationRoad);
+    }
 
-  /**
-   * Create a spawn point.
-   *
-   * @param currentTime         the current time
-   * @param pos                 the initial position
-   * @param heading             the initial heading
-   * @param steeringAngle       the initial steering angle
-   * @param acceleration        the initial acceleration
-   * @param lane                the lane
-   * @param noVehicleZone       the no vehicle zone
-   * @param vehicleSpecChooser  the vehicle spec chooser
-   */
-  public SpawnPoint(double currentTime,
-                    Point2D pos,
-                    double heading,
-                    double steeringAngle,
-                    double acceleration,
-                    Lane lane,
-                    Rectangle2D noVehicleZone,
-                    SpawnSpecGenerator vehicleSpecChooser) {
-    this.currentTime = currentTime;
-    this.pos = pos;
-    this.heading = heading;
-    this.steeringAngle = steeringAngle;
-    this.acceleration = acceleration;
-    this.lane = lane;
-    this.noVehicleZone = noVehicleZone;
-    this.vehicleSpecChooser = vehicleSpecChooser;
-  }
-
-  /**
-   * Create a spawn point.
-   *
-   * @param currentTime         the current time
-   * @param pos                 the initial position
-   * @param heading             the initial heading
-   * @param steeringAngle       the initial steering angle
-   * @param acceleration        the initial acceleration
-   * @param lane                the lane
-   * @param noVehicleZone       the no vehicle zone
-   */
-  public SpawnPoint(double currentTime,
-                    Point2D pos,
-                    double heading,
-                    double steeringAngle,
-                    double acceleration,
-                    Lane lane,
-                    Rectangle2D noVehicleZone) {
-    this.currentTime = currentTime;
-    this.pos = pos;
-    this.heading = heading;
-    this.steeringAngle = steeringAngle;
-    this.acceleration = acceleration;
-    this.lane = lane;
-    this.noVehicleZone = noVehicleZone;
-    this.vehicleSpecChooser = null;
-  }
-
-  /////////////////////////////////
-  // PUBLIC METHODS
-  /////////////////////////////////
-
-  /**
-   * Advance the time step.
-   *
-   * @param timeStep  the time step
-   * @return The list of spawn spec generated in this time step
-   */
-  public List<SpawnSpec> act(double timeStep) {
-    assert vehicleSpecChooser != null;
-    List<SpawnSpec> spawnSpecs = vehicleSpecChooser.act(this, timeStep);
-    currentTime += timeStep;
-    return spawnSpecs;
-  }
-  
-  public void advance(double timeStep) {
-    currentTime += timeStep;
-  }
-  
-  public SpawnSpec act(double timeStep, VEHICLE_TYPE vehicleType, Road destinationRoad) {
-    assert vehicleSpecChooser != null;
-    return vehicleSpecChooser.act(this, timeStep, vehicleType, destinationRoad);
-  }
-
-  public void vehicleGenerated() {
-  	vehicleSpecChooser.vehicleGenerated();
+    public void vehicleGenerated() {
+        vehicleSpecChooser.vehicleGenerated();
         getLane().enter(0);
-  }
-  /////////////////////////////////
-  // PUBLIC METHODS
-  /////////////////////////////////
+    }
+    /////////////////////////////////
+    // PUBLIC METHODS
+    /////////////////////////////////
 
-  // info retrieval
+    // info retrieval
+    /**
+     * Get the current time.
+     *
+     * @return the current time
+     */
+    public double getCurrentTime() {
+        return currentTime;
+    }
 
-  /**
-   * Get the current time.
-   *
-   * @return the current time
-   */
-  public double getCurrentTime() {
-    return currentTime;
-  }
+    /**
+     * Get the initial position.
+     *
+     * @return the initial position
+     */
+    public Point2D getPosition() {
+        return pos;
+    }
 
-  /**
-   * Get the initial position.
-   *
-   * @return the initial position
-   */
-  public Point2D getPosition() {
-    return pos;
-  }
+    /**
+     * Get the initial heading.
+     *
+     * @return the initial heading
+     */
+    public double getHeading() {
+        return heading;
+    }
 
-  /**
-   * Get the initial heading.
-   *
-   * @return the initial heading
-   */
-  public double getHeading() {
-    return heading;
-  }
+    /**
+     * Get the initial steering angle.
+     *
+     * @return the initial steering angle
+     */
+    public double getSteeringAngle() {
+        return steeringAngle;
+    }
 
-  /**
-   * Get the initial steering angle.
-   *
-   * @return the initial steering angle
-   */
-  public double getSteeringAngle() {
-    return steeringAngle;
-  }
+    /**
+     * Get the initial acceleration.
+     *
+     * @return the initial acceleration
+     */
+    public double getAcceleration() {
+        return acceleration;
+    }
 
-  /**
-   * Get the initial acceleration.
-   *
-   * @return the initial acceleration
-   */
-  public double getAcceleration() {
-    return acceleration;
-  }
+    /**
+     * Get the lane.
+     *
+     * @return the lane
+     */
+    public Lane getLane() {
+        return lane;
+    }
 
-  /**
-   * Get the lane.
-   *
-   * @return the lane
-   */
-  public Lane getLane() {
-    return lane;
-  }
+    /**
+     * Get the no vehicle zone.
+     *
+     * @return the no vehicle zone
+     */
+    public Rectangle2D getNoVehicleZone() {
+        return noVehicleZone;
+    }
 
-  /**
-   * Get the no vehicle zone.
-   *
-   * @return the no vehicle zone
-   */
-  public Rectangle2D getNoVehicleZone() {
-    return noVehicleZone;
-  }
-
-  /**
-   * Set the vehicle spec chooser.
-   *
-   * @param vehicleSpecChooser the vehicle spec chooser
-   */
-  public void setVehicleSpecChooser(SpawnSpecGenerator vehicleSpecChooser) {
-    // assert this.vehicleSpecChooser == null;  // TODO think whether it is okay
-    this.vehicleSpecChooser = vehicleSpecChooser;
-  }
+    /**
+     * Set the vehicle spec chooser.
+     *
+     * @param vehicleSpecChooser the vehicle spec chooser
+     */
+    public void setVehicleSpecChooser(SpawnSpecGenerator vehicleSpecChooser) {
+        // assert this.vehicleSpecChooser == null;  // TODO think whether it is okay
+        this.vehicleSpecChooser = vehicleSpecChooser;
+    }
+    
+    /**
+     * Get the vehicle spec chooser.
+     * @return the vehicle spec chooser currently set for this spawn point.
+     */
+    public SpawnSpecGenerator getVehicleSpecChooser() {
+        return vehicleSpecChooser;
+    }
 
 }

@@ -30,6 +30,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 package aim4.noise;
 
+import aim4.util.Util;
 import java.util.Random;
 
 /**
@@ -38,7 +39,7 @@ import java.util.Random;
 public class GaussianNoiseFunction implements NoiseFunction {
 
   /** Random seed for creating noise. */
-  protected static Random rnd = new Random();
+  protected static Random rnd = Util.RANDOM_NUM_GEN ;
 
   /** The standard deviation of the Gaussian that will generate the noise. */
   private double standardDeviation;

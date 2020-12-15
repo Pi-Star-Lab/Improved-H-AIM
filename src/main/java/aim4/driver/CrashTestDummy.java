@@ -51,6 +51,8 @@ public class CrashTestDummy extends Driver {
 
   /** The Lane in which the vehicle should exit the intersection. */
   private Lane departureLane;
+  
+  private Lane entryLane;
 
 
   /////////////////////////////////
@@ -71,6 +73,7 @@ public class CrashTestDummy extends Driver {
                         Lane arrivalLane, Lane departureLane) {
     this.vehicle = vehicle;
     setCurrentLane(arrivalLane);
+    entryLane=arrivalLane;
     this.departureLane = departureLane;
   }
 
@@ -198,6 +201,16 @@ public class CrashTestDummy extends Driver {
     return V2IPilot.TRAVERSING_LANE_CHANGE_LEAD_TIME *
            vehicle.gaugeVelocity();
   }
+
+    @Override
+    public Lane getEntryLane() {
+        return entryLane;
+    }
+
+    @Override
+    public void setEntryLane(Lane entryLane) {
+        throw new UnsupportedOperationException("Not supported yet."); //To change body of generated methods, choose Tools | Templates.
+    }
 
 
 }

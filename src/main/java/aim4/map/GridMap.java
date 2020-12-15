@@ -30,6 +30,7 @@
  */
 package aim4.map;
 
+import aim4.config.Constants;
 import java.awt.geom.Point2D;
 import java.awt.geom.Rectangle2D;
 import java.io.FileNotFoundException;
@@ -43,14 +44,15 @@ import java.util.Map;
 import aim4.config.Debug;
 import aim4.config.Resources;
 import aim4.im.IntersectionManager;
+import aim4.im.intersectionarch.ArchIntersection;
 import aim4.map.lane.Lane;
 import aim4.map.lane.LineSegmentLane;
 import aim4.util.ArrayListRegistry;
 import aim4.util.GeomMath;
 import aim4.util.Registry;
-import aim4.vehicle.VehicleSimView;
 import aim4.vehicle.VinRegistry;
 import expr.trb.DesignatedLanesExpr;
+import java.util.HashSet;
 
 /**
  * The grid layout map.
@@ -153,54 +155,74 @@ public class GridMap implements BasicMap {
      * @param columns the number of columns
      * @param rows the number of rows
      * @param laneWidth the lane width
-     * @param speedLimit the speed limit
+     * @param speedLimit the speed limit for all roads, overridden by speed
+     * limits set for specific roads in archDTO if archDTO is not null and has a
+     * speed limit set for a particular road
      * @param lanesPerRoad the number of lanes per road
      * @param medianSize the width of the area between the roads in opposite
      * direction
      * @param distanceBetween the distance between the adjacent intersections
+     * @param interArch object containing information about the architecture and
+     * turning policies for an intersection (this should be <code>null</code> in
+     * multi-intersection layouts)
      */
     public GridMap(double initTime, int columns, int rows,
             double laneWidth, double speedLimit, int lanesPerRoad,
-            double medianSize, double distanceBetween) {
+            double medianSize, double distanceBetween, ArchIntersection interArch) {
         // Can't make these unless there is at least one row and column
         if (rows < 1 || columns < 1) {
             throw new IllegalArgumentException("Must have at least one column "
                     + "and row!");
+        } else if (interArch != null && (columns > 1 || rows > 1)) {
+            throw new IllegalArgumentException("ArchitectureDTO specified with multiple intersections. This is not allowed.");
         }
         this.columns = columns;
         this.rows = rows;
+
+        int actualLanesPerRoad = (interArch != null && interArch.getMaxNumberOfLanes() > 0 ? interArch.getMaxNumberOfLanes() : lanesPerRoad);
         // Can't forget to account for the fact that we have "distanceBetween"
         // on the outsides too, so we have to add an extra one in.
         double height = rows * (medianSize
-                + 2 * lanesPerRoad * laneWidth
+                + 2 * actualLanesPerRoad * laneWidth
                 + distanceBetween) + distanceBetween;
         double width = columns * (medianSize
-                + 2 * lanesPerRoad * laneWidth
+                + 2 * actualLanesPerRoad * laneWidth
                 + distanceBetween) + distanceBetween;
         dimensions = new Rectangle2D.Double(0, 0, width, height);
 
         dataCollectionLines = new ArrayList<DataCollectionLine>(2 * (columns + rows));
 
+        Double aheadReservationTimeForRoad = null;
         // Create the vertical Roads
         for (int column = 0; column < columns; column++) {
+            int lanesForRightRoad = (interArch != null && interArch.getMaxNumberOfLanes() > 0 ? interArch.getMaxNumberOfLanes() : lanesPerRoad);
+            int lanesForLeftRoad = (interArch != null && interArch.getMaxNumberOfLanes() > 0 ? interArch.getMaxNumberOfLanes() : lanesPerRoad);
             double roadMiddleX
-                    = column * (medianSize + 2 * lanesPerRoad * laneWidth + distanceBetween)
-                    + distanceBetween + lanesPerRoad * laneWidth + medianSize / 2;
+                    = column * (medianSize + (lanesForRightRoad + lanesForLeftRoad) * laneWidth + distanceBetween)
+                    + distanceBetween + (lanesForRightRoad + lanesForLeftRoad) / 2 * laneWidth + medianSize / 2;
 
             // First create the right road (northbound)
+            aheadReservationTimeForRoad = (interArch == null || interArch.getAheadReservationTime(Constants.Direction.NORTH) == null ? null : interArch.getAheadReservationTime(Constants.Direction.NORTH));
             Road right
-                    = new Road(GeomMath.ordinalize(column + 1) + " Avenue N", this);
-            for (int i = 0; i < lanesPerRoad; i++) {
-                double x = roadMiddleX + // Start in the middle
-                        (i * laneWidth) + // Move down for each lane we've done
+                    = new Road(GeomMath.ordinalize(column + 1) + " Avenue N", this, aheadReservationTimeForRoad);
+            for (int i = 0; i < lanesForRightRoad; i++) {
+                double x = roadMiddleX
+                        + // Start in the middle
+                        (i * laneWidth)
+                        + // Move down for each lane we've done
                         (laneWidth + medianSize) / 2; // Get to the lane center
+                //determine if a speed limit for the road was specified in the architecture DTO. If so, use that rather than the passed in value. Since these are hard coded direction-wise, use the appropriate direction.
+                double actualSpeedLimit = (interArch == null || interArch.getSpeedLimit(Constants.Direction.NORTH) == null ? speedLimit : interArch.getSpeedLimit(Constants.Direction.NORTH));
                 Lane l = new LineSegmentLane(x, // x1
                         height, // y1
                         x, // x2
                         0, // y2
                         laneWidth, // width
-                        speedLimit,
-                        rows + 1);
+                        actualSpeedLimit,
+                        rows + 1,
+                        right //road containing the lane
+                );
+                Resources.laneToVin.put(l, new HashSet<Integer>());
                 int laneId = laneRegistry.register(l);
                 l.setId(laneId);
                 right.addTheRightMostLane(l);
@@ -215,7 +237,7 @@ public class GridMap implements BasicMap {
                             dataCollectionLines.size(),
                             new Point2D.Double(roadMiddleX,
                                     height - DATA_COLLECTION_LINE_POSITION),
-                            new Point2D.Double(roadMiddleX + lanesPerRoad * laneWidth + medianSize,
+                            new Point2D.Double(roadMiddleX + lanesForRightRoad * laneWidth + medianSize,
                                     height - DATA_COLLECTION_LINE_POSITION),
                             true));
             dataCollectionLines.add(
@@ -224,23 +246,31 @@ public class GridMap implements BasicMap {
                             dataCollectionLines.size(),
                             new Point2D.Double(roadMiddleX,
                                     DATA_COLLECTION_LINE_POSITION),
-                            new Point2D.Double(roadMiddleX + lanesPerRoad * laneWidth + medianSize,
+                            new Point2D.Double(roadMiddleX + lanesForRightRoad * laneWidth + medianSize,
                                     DATA_COLLECTION_LINE_POSITION),
                             true));
 
             // Now create the left (southbound)
-            Road left = new Road(GeomMath.ordinalize(column + 1) + " Avenue S", this);
-            for (int i = 0; i < lanesPerRoad; i++) {
-                double x = roadMiddleX - // Start in the middle
-                        (i * laneWidth) - // Move up for each lane we've done
+            aheadReservationTimeForRoad = (interArch == null || interArch.getAheadReservationTime(Constants.Direction.SOUTH) == null ? null : interArch.getAheadReservationTime(Constants.Direction.SOUTH));
+            Road left = new Road(GeomMath.ordinalize(column + 1) + " Avenue S", this, aheadReservationTimeForRoad);
+            for (int i = 0; i < lanesForLeftRoad; i++) {
+                double x = roadMiddleX
+                        - // Start in the middle
+                        (i * laneWidth)
+                        - // Move up for each lane we've done
                         (laneWidth + medianSize) / 2; // Get to the lane center
+                //determine if a speed limit for the road was specified in the architecture DTO. If so, use that rather than the passed in value. Since these are hard coded direction-wise, use the appropriate direction.
+                double actualSpeedLimit = (interArch == null || interArch.getSpeedLimit(Constants.Direction.SOUTH) == null ? speedLimit : interArch.getSpeedLimit(Constants.Direction.SOUTH));
                 Lane l = new LineSegmentLane(x, // x1
                         0, // y1
                         x, // x2
                         height, // y2
                         laneWidth, // width
-                        speedLimit,
-                        rows + 1);
+                        actualSpeedLimit,
+                        rows + 1,
+                        left // road containing the lane
+                );
+                Resources.laneToVin.put(l, new HashSet<Integer>());
                 int laneId = laneRegistry.register(l);
                 l.setId(laneId);
                 left.addTheRightMostLane(l);
@@ -255,7 +285,7 @@ public class GridMap implements BasicMap {
                             dataCollectionLines.size(),
                             new Point2D.Double(roadMiddleX,
                                     DATA_COLLECTION_LINE_POSITION),
-                            new Point2D.Double(roadMiddleX - lanesPerRoad * laneWidth - medianSize,
+                            new Point2D.Double(roadMiddleX - lanesForLeftRoad * laneWidth - medianSize,
                                     DATA_COLLECTION_LINE_POSITION),
                             true));
             dataCollectionLines.add(
@@ -264,7 +294,7 @@ public class GridMap implements BasicMap {
                             dataCollectionLines.size(),
                             new Point2D.Double(roadMiddleX,
                                     height - DATA_COLLECTION_LINE_POSITION),
-                            new Point2D.Double(roadMiddleX - lanesPerRoad * laneWidth - medianSize,
+                            new Point2D.Double(roadMiddleX - lanesForLeftRoad * laneWidth - medianSize,
                                     height - DATA_COLLECTION_LINE_POSITION),
                             true));
 
@@ -274,22 +304,32 @@ public class GridMap implements BasicMap {
 
         // Create the horizontal Roads
         for (int row = 0; row < rows; row++) {
+            int lanesForUpperRoad = (interArch != null && interArch.getMaxNumberOfLanes() > 0 ? interArch.getMaxNumberOfLanes() : lanesPerRoad);
+            int lanesForLowerRoad = (interArch != null && interArch.getMaxNumberOfLanes() > 0 ? interArch.getMaxNumberOfLanes() : lanesPerRoad);
             double roadMiddleY
-                    = row * (medianSize + 2 * lanesPerRoad * laneWidth + distanceBetween)
-                    + distanceBetween + lanesPerRoad * laneWidth + medianSize / 2;
+                    = row * (medianSize + (lanesForUpperRoad+lanesForLowerRoad) * laneWidth + distanceBetween)
+                    + distanceBetween + (lanesForUpperRoad+lanesForLowerRoad)/2 * laneWidth + medianSize / 2;
             // First create the lower (eastbound)
-            Road lower = new Road(GeomMath.ordinalize(row + 1) + " Street E", this);
-            for (int i = 0; i < lanesPerRoad; i++) {
-                double y = roadMiddleY + // Start in the middle
-                        (i * laneWidth) + // Move up for each lane we've done
+            aheadReservationTimeForRoad = (interArch == null || interArch.getAheadReservationTime(Constants.Direction.EAST) == null ? null : interArch.getAheadReservationTime(Constants.Direction.EAST));
+            Road lower = new Road(GeomMath.ordinalize(row + 1) + " Street E", this, aheadReservationTimeForRoad);
+            for (int i = 0; i < lanesForLowerRoad; i++) {
+                double y = roadMiddleY
+                        + // Start in the middle
+                        (i * laneWidth)
+                        + // Move up for each lane we've done
                         (laneWidth + medianSize) / 2; // Get to the lane center
+                //determine if a speed limit for the road was specified in the architecture DTO. If so, use that rather than the passed in value. Since these are hard coded direction-wise, use the appropriate direction.
+                double actualSpeedLimit = (interArch == null || interArch.getSpeedLimit(Constants.Direction.EAST) == null ? speedLimit : interArch.getSpeedLimit(Constants.Direction.EAST));
                 Lane l = new LineSegmentLane(0, // x1
                         y, // y1
                         width, // x2
                         y, // y2
                         laneWidth, // width
-                        speedLimit,
-                        columns + 1);
+                        actualSpeedLimit,
+                        columns + 1,
+                        lower //road containing the lane
+                );
+                Resources.laneToVin.put(l, new HashSet<Integer>());
                 int laneId = laneRegistry.register(l);
                 l.setId(laneId);
                 lower.addTheRightMostLane(l);
@@ -305,7 +345,7 @@ public class GridMap implements BasicMap {
                             new Point2D.Double(DATA_COLLECTION_LINE_POSITION,
                                     roadMiddleY),
                             new Point2D.Double(DATA_COLLECTION_LINE_POSITION,
-                                    roadMiddleY + lanesPerRoad * laneWidth + medianSize),
+                                    roadMiddleY + lanesForLowerRoad * laneWidth + medianSize),
                             true));
             dataCollectionLines.add(
                     new DataCollectionLine(
@@ -314,22 +354,30 @@ public class GridMap implements BasicMap {
                             new Point2D.Double(width - DATA_COLLECTION_LINE_POSITION,
                                     roadMiddleY),
                             new Point2D.Double(width - DATA_COLLECTION_LINE_POSITION,
-                                    roadMiddleY + lanesPerRoad * laneWidth + medianSize),
+                                    roadMiddleY + lanesForLowerRoad * laneWidth + medianSize),
                             true));
 
             // Now create the upper (westbound)
-            Road upper = new Road(GeomMath.ordinalize(row + 1) + " Street W", this);
-            for (int i = 0; i < lanesPerRoad; i++) {
-                double y = roadMiddleY - // Start in the middle
-                        (i * laneWidth) - // Move down for each lane we've done
+            aheadReservationTimeForRoad = (interArch == null || interArch.getAheadReservationTime(Constants.Direction.WEST) == null ? null : interArch.getAheadReservationTime(Constants.Direction.WEST));
+            Road upper = new Road(GeomMath.ordinalize(row + 1) + " Street W", this, aheadReservationTimeForRoad);
+            for (int i = 0; i < lanesForUpperRoad; i++) {
+                double y = roadMiddleY
+                        - // Start in the middle
+                        (i * laneWidth)
+                        - // Move down for each lane we've done
                         (laneWidth + medianSize) / 2; // Get to the lane center
+                //determine if a speed limit for the road was specified in the architecture DTO. If so, use that rather than the passed in value. Since these are hard coded direction-wise, use the appropriate direction.
+                double actualSpeedLimit = (interArch == null || interArch.getSpeedLimit(Constants.Direction.WEST) == null ? speedLimit : interArch.getSpeedLimit(Constants.Direction.WEST));
                 Lane l = new LineSegmentLane(width, // x1
                         y, // y1
                         0, // x2
                         y, // y2
                         laneWidth, // width
-                        speedLimit,
-                        columns + 1);
+                        actualSpeedLimit,
+                        columns + 1,
+                        upper //road containing the lane
+                );
+                Resources.laneToVin.put(l, new HashSet<Integer>());
                 int laneId = laneRegistry.register(l);
                 l.setId(laneId);
                 upper.addTheRightMostLane(l);
@@ -345,7 +393,7 @@ public class GridMap implements BasicMap {
                             new Point2D.Double(width - DATA_COLLECTION_LINE_POSITION,
                                     roadMiddleY),
                             new Point2D.Double(width - DATA_COLLECTION_LINE_POSITION,
-                                    roadMiddleY - lanesPerRoad * laneWidth - medianSize),
+                                    roadMiddleY - lanesForUpperRoad * laneWidth - medianSize),
                             true));
             dataCollectionLines.add(
                     new DataCollectionLine(
@@ -354,7 +402,7 @@ public class GridMap implements BasicMap {
                             new Point2D.Double(DATA_COLLECTION_LINE_POSITION,
                                     roadMiddleY),
                             new Point2D.Double(DATA_COLLECTION_LINE_POSITION,
-                                    roadMiddleY - lanesPerRoad * laneWidth - medianSize),
+                                    roadMiddleY - lanesForUpperRoad * laneWidth - medianSize),
                             true));
 
             // Set up the "dual" relationship
@@ -423,8 +471,10 @@ public class GridMap implements BasicMap {
         Rectangle2D noVehicleZone
                 = lane.getShape(normalizedStartDistance, d).getBounds2D();
 
-        return new SpawnPoint(initTime, pos, heading, steeringAngle, acceleration,
+        SpawnPoint sp = new SpawnPoint(initTime, pos, heading, steeringAngle, acceleration,
                 lane, noVehicleZone);
+        sp.getLane().registerSpawnPoint(sp);
+        return sp;
     }
 
     /////////////////////////////////

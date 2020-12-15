@@ -40,7 +40,7 @@ import aim4.util.Util;
 
 /**
  * The RandomDestinationSelector selects Roads uniformly at random, but will
- * not select a Road that is the dual of the starting Road.  This is to
+ not select a Road that is the dual of the starting Road.  This is to
  * prevent Vehicles from simply going back from whence they came.
  */
 public class RandomDestinationSelector implements DestinationSelector {
@@ -79,10 +79,10 @@ public class RandomDestinationSelector implements DestinationSelector {
   public Road selectDestination(Lane currentLane) {
     Road currentRoad = Debug.currentMap.getRoad(currentLane);
     Road dest =
-      destinationRoads.get(Util.random.nextInt(destinationRoads.size()));
+      destinationRoads.get(Util.RANDOM_NUM_GEN.nextInt(destinationRoads.size()));
     while(dest.getDual() == currentRoad) {
       dest =
-        destinationRoads.get(Util.random.nextInt(destinationRoads.size()));
+        destinationRoads.get(Util.RANDOM_NUM_GEN.nextInt(destinationRoads.size()));
     }
     return dest;
   }

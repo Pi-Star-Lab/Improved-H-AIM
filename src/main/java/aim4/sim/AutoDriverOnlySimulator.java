@@ -54,10 +54,13 @@ import aim4.config.Resources;
 import aim4.config.SimConfig;
 import aim4.config.SimConfig.SIGNAL_TYPE;
 import aim4.config.SimConfig.VEHICLE_TYPE;
-import aim4.config.TrafficSignalPhase;
+import aim4.config.ringbarrier.RingAndBarrier;
 import aim4.driver.AutoDriver;
+import aim4.driver.Driver;
 import aim4.driver.DriverSimView;
 import aim4.driver.ProxyDriver;
+import aim4.driver.coordinator.V2ICoordinator;
+import aim4.driver.coordinator.V2ICoordinator.State;
 import aim4.im.IntersectionManager;
 import aim4.im.v2i.V2IManager;
 import aim4.im.v2i.RequestHandler.ApproxNPhasesTrafficSignalRequestHandler;
@@ -70,7 +73,11 @@ import aim4.map.GridMapUtil;
 import aim4.map.Road;
 import aim4.map.SpawnPoint;
 import aim4.map.SpawnPoint.SpawnSpec;
+import aim4.map.SpawnPoint.SpawnSpecGenerator;
 import aim4.map.lane.Lane;
+import aim4.map.trafficbyturns.DestinationFileSpawnSpecGenerator;
+import aim4.map.trafficbyturns.FileSpawnSpecGenerator;
+import aim4.map.trafficbyturns.TurnMovements;
 import aim4.msg.i2v.I2VMessage;
 import aim4.msg.v2i.V2IMessage;
 import aim4.sim.setup.AdaptiveTrafficSignalSuperviser;
@@ -81,15 +88,17 @@ import aim4.vehicle.ProxyVehicleSimView;
 import aim4.vehicle.VehicleSpec;
 import aim4.vehicle.VinRegistry;
 import aim4.vehicle.VehicleSimView;
+import java.util.Collections;
 import expr.trb.DesignatedLanesExpr;
 import expr.trb.TrafficSignalExpr;
+import java.awt.geom.Area;
 
 /**
  * The autonomous drivers only simulator.
  */
 public class AutoDriverOnlySimulator implements Simulator {
 
-  /////////////////////////////////
+    /////////////////////////////////
     // NESTED CLASSES
     /////////////////////////////////
     /**
@@ -120,10 +129,6 @@ public class AutoDriverOnlySimulator implements Simulator {
             return completedVINs;
         }
     }
-
-  /////////////////////////////////
-    // PRIVATE FIELDS
-    /////////////////////////////////
     /**
      * The map
      */
@@ -158,19 +163,27 @@ public class AutoDriverOnlySimulator implements Simulator {
     public int generatedVehicles = 0;
 
     private List<Double> completionTimes;
-  /////////////////////////////////
+
+    /**
+     * Specifies flow and turn movement information
+     */
+    protected TurnMovements turnMovements;
+
+    /////////////////////////////////
     // CLASS CONSTRUCTORS
     /////////////////////////////////
-
     /**
      * Create an instance of the simulator.
      *
      * @param basicMap the map of the simulation
+     * @param turnMovements Specifies flow and turn movement information
      */
-    public AutoDriverOnlySimulator(BasicMap basicMap) {
+    public AutoDriverOnlySimulator(BasicMap basicMap, TurnMovements turnMovements) {
         this.basicMap = basicMap;
         this.vinToVehicles = new HashMap<Integer, VehicleSimView>();
         Resources.vinToVehicles = this.vinToVehicles;
+
+        this.turnMovements = turnMovements;
 
         currentTime = 0.0;
         this.completionTimes = new ArrayList<Double>(5000);
@@ -179,10 +192,10 @@ public class AutoDriverOnlySimulator implements Simulator {
         totalBitsReceivedByCompletedVehicles = 0;
     }
 
-  /////////////////////////////////
+    /////////////////////////////////
     // PUBLIC METHODS
     /////////////////////////////////
-  // the main loop
+    // the main loop
     /**
      * {@inheritDoc}
      */
@@ -197,6 +210,8 @@ public class AutoDriverOnlySimulator implements Simulator {
         if (SimConfig.signalType == SimConfig.SIGNAL_TYPE.RED_PHASE_ADAPTIVE
                 && ApproxNPhasesTrafficSignalRequestHandler.CyclicSignalController.needRecalculate(currentTime)) {
             updateTrafficSignal();
+        } else if (SimConfig.signalType == SimConfig.SIGNAL_TYPE.FULLY_ACTUATED) {
+            Resources.ringAndBarrier.refreshSignals(currentTime);
         }
 
         // spawning vehicles from spawning points according to traffic level
@@ -204,7 +219,7 @@ public class AutoDriverOnlySimulator implements Simulator {
         if (Debug.PRINT_SIMULATOR_STAGE) {
             System.err.printf("------SIM:provideSensorInput---------------\n");
         }
-
+        
         // generate information like the linked-table of vehicles, intervals between vehicles, signal, etc 
         provideSensorInput();
         if (Debug.PRINT_SIMULATOR_STAGE) {
@@ -216,6 +231,18 @@ public class AutoDriverOnlySimulator implements Simulator {
         if (Debug.PRINT_SIMULATOR_STAGE) {
             System.err.printf("------SIM:letIntersectionManagersAct--------------\n");
         }
+        /*for (VehicleSimView v1 : vinToVehicles.values()) {
+            for (VehicleSimView v2 : vinToVehicles.values()) {
+                Area a1 = new Area(v1.getShape());
+                Area a2 = new Area(v2.getShape());
+                a1.intersect(a2);
+                if (v1 != v2 && !a1.isEmpty()) {
+                    System.out.println(v1.getFrontVehicle());
+                    System.out.println(v2.getFrontVehicle());
+                    throw new RuntimeException("ded " + currentTime + " " + v1.getVIN() + " " + v2.getVIN());
+                }
+            }
+        }*/
 
         // intersection dealing with proposals
         letIntersectionManagersAct(timeStep);
@@ -246,13 +273,19 @@ public class AutoDriverOnlySimulator implements Simulator {
         // debug
         checkClocks();
 
+        if (turnMovements != null && turnMovements.getExpectedSpawnsUpToEndOfTimeSlot(currentTime) != (getGeneratedVehiclesNum() + getScheduledVehiclesRemaining())) {
+            throw new RuntimeException("Simulation failed at time: " + currentTime + " Number of vehicles spawned and/or scheduled are not the expected numbers of vehicles.\n"
+                    + "Expected by end of time slot: " + turnMovements.getExpectedSpawnsUpToEndOfTimeSlot(currentTime) + "\n"
+                    + "Number currently spawned and/or scheduled: " + (getGeneratedVehiclesNum() + getScheduledVehiclesRemaining()));
+        }
+
         return new AutoDriverOnlySimStepResult(completedVINs);
     }
 
-  /////////////////////////////////
+    /////////////////////////////////
     // PUBLIC METHODS
     /////////////////////////////////
-  // information retrieval
+    // information retrieval
     /**
      * {@inheritDoc}
      */
@@ -319,7 +352,7 @@ public class AutoDriverOnlySimulator implements Simulator {
         return vinToVehicles.get(vin);
     }
 
-  /////////////////////////////////
+    /////////////////////////////////
     // PUBLIC METHODS
     /////////////////////////////////
     /**
@@ -352,10 +385,10 @@ public class AutoDriverOnlySimulator implements Simulator {
         vinToVehicles.put(vehicle.getVIN(), vehicle);
     }
 
-  /////////////////////////////////
+    /////////////////////////////////
     // PRIVATE METHODS
     /////////////////////////////////
-  /////////////////////////////////
+    /////////////////////////////////
     // STEP 1
     /////////////////////////////////
     /**
@@ -364,8 +397,10 @@ public class AutoDriverOnlySimulator implements Simulator {
      * @param timeStep the time step
      */
     private void spawnVehicles(double timeStep) {
-        if (DesignatedLanesExpr.DESIGNATED_LANES) {
+        if (DesignatedLanesExpr.exprType == DesignatedLanesExpr.ExprType.DESIGNATED_LANES) {
             DesignatedLanesExpr.spawnVehicles(timeStep, this);
+        } else if (DesignatedLanesExpr.exprType == DesignatedLanesExpr.ExprType.DESIGNATED_LANES_WITH_ARCH) {
+            DesignatedLanesExpr.spawnVehiclesWithInterArch(timeStep, this);
         } else {
             for (SpawnPoint spawnPoint : basicMap.getSpawnPoints()) {
                 // figure out whether it can spawn - now vehicles too near
@@ -417,14 +452,13 @@ public class AutoDriverOnlySimulator implements Simulator {
      *
      * @param spawnPoint the spawn point
      * @param spawnSpec the spawn specification
-     * @param isHuman	is a human driver or not
      * @return the vehicle
      */
     public VehicleSimView makeVehicle(SpawnPoint spawnPoint,
             SpawnSpec spawnSpec) {
         VehicleSpec spec = spawnSpec.getVehicleSpec();
         Lane lane = spawnPoint.getLane();
-    // Now just take the minimum of the max velocity of the vehicle, and
+        // Now just take the minimum of the max velocity of the vehicle, and
         // the speed limit in the lane
         double initVelocity = Math.min(spec.getMaxVelocity(), lane.getSpeedLimit());
         // Obtain a Vehicle
@@ -448,7 +482,7 @@ public class AutoDriverOnlySimulator implements Simulator {
         return vehicle;
     }
 
-  /////////////////////////////////
+    /////////////////////////////////
     // STEP 2
     /////////////////////////////////
     /**
@@ -458,7 +492,7 @@ public class AutoDriverOnlySimulator implements Simulator {
      * distance on their lanes
      */
     private Map<Lane, SortedMap<Double, VehicleSimView>> computeVehicleLists() {
-    // Set up the structure that will hold all the Vehicles as they are
+        // Set up the structure that will hold all the Vehicles as they are
         // currently ordered in the Lanes
         Map<Lane, SortedMap<Double, VehicleSimView>> vehicleLists
                 = new HashMap<Lane, SortedMap<Double, VehicleSimView>>();
@@ -467,7 +501,7 @@ public class AutoDriverOnlySimulator implements Simulator {
                 vehicleLists.put(lane, new TreeMap<Double, VehicleSimView>());
             }
         }
-    // Now add each of the Vehicles, but make sure to exclude those that are
+        // Now add each of the Vehicles, but make sure to exclude those that are
         // already inside (partially or entirely) the intersection
         for (VehicleSimView vehicle : vinToVehicles.values()) {
             // Find out what lanes it is in.
@@ -477,33 +511,48 @@ public class AutoDriverOnlySimulator implements Simulator {
                 IntersectionManager im
                         = lane.getLaneIM().nextIntersectionManager(vehicle.getPosition());
                 // Only include this Vehicle if it is not in the intersection.
-                if (lane.getLaneIM().distanceToNextIntersection(vehicle.getPosition()) > 0
+                if (true || lane.getLaneIM().distanceToNextIntersection(vehicle.getPosition()) > 0
                         || im == null || !im.intersects(vehicle.getShape().getBounds2D())) {
                     // Now find how far along the lane it is.
                     double dst = lane.distanceAlongLane(vehicle.getPosition());
                     // Now add it to the map.
                     vehicleLists.get(lane).put(dst, vehicle);
                 }
-            }
-        }
-        // Now consolidate the lists based on lanes
-        for (Road road : basicMap.getRoads()) {
-            for (Lane lane : road.getLanes()) {
-                // We may have already removed this Lane from the map
-                if (vehicleLists.containsKey(lane)) {
-                    Lane currLane = lane;
-                    // Now run through the lanes
-                    while (currLane.hasNextLane()) {
-                        currLane = currLane.getNextLane();
-            // Put everything from the next lane into the original lane
-                        // and remove the mapping for the next lane
-                        vehicleLists.get(lane).putAll(vehicleLists.remove(currLane));
-                    }
-                }
+                lane.getLaneIM().setVehiclesInLane(Collections.unmodifiableSortedMap(vehicleLists.get(lane)));
             }
         }
 
         return vehicleLists;
+    }
+
+    //todo, check if something more effecient can be done than a copy of vehicleLists first
+    /**
+     * Consolidates vehicleList into a new list by connected lanes for purposes
+     * of later mapping nth vehicle in lane to (n+1)th vehicle
+     *
+     * @return a mapping from lanes to lists of vehicles sorted by their
+     * distance on their lanes with connecting lanes consolidated.
+     */
+    private Map<Lane, SortedMap<Double, VehicleSimView>> consolidateVehicleList(Map<Lane, SortedMap<Double, VehicleSimView>> vehicleLists) {
+        Map<Lane, SortedMap<Double, VehicleSimView>> consolVehicleLists
+                = new HashMap<Lane, SortedMap<Double, VehicleSimView>>(vehicleLists);
+        // Now consolidate the lists based on lanes
+        for (Road road : basicMap.getRoads()) {
+            for (Lane lane : road.getLanes()) {
+                // We may have already removed this Lane from the map
+                if (consolVehicleLists.containsKey(lane)) {
+                    Lane currLane = lane;
+                    // Now run through the lanes
+                    while (currLane.hasNextLane()) {
+                        currLane = currLane.getNextLane();
+                        // Put everything from the next lane into the original lane
+                        // and remove the mapping for the next lane
+                        consolVehicleLists.get(lane).putAll(consolVehicleLists.remove(currLane));
+                    }
+                }
+            }
+        }
+        return consolVehicleLists;
     }
 
     /**
@@ -515,7 +564,7 @@ public class AutoDriverOnlySimulator implements Simulator {
      */
     private Map<VehicleSimView, VehicleSimView> computeNextVehicle(
             Map<Lane, SortedMap<Double, VehicleSimView>> vehicleLists) {
-    // At this point we should only have mappings for start Lanes, and they
+        // At this point we should only have mappings for start Lanes, and they
         // should include all the Lanes they run into.  Now we need to turn this
         // into a hash map that maps Vehicles to the next vehicle in the Lane
         // or any Lane the Lane runs into
@@ -552,12 +601,14 @@ public class AutoDriverOnlySimulator implements Simulator {
     private void provideSensorInput() {
         Map<Lane, SortedMap<Double, VehicleSimView>> vehicleLists
                 = computeVehicleLists();
+        Map<Lane, SortedMap<Double, VehicleSimView>> consolVecList = consolidateVehicleList(vehicleLists);
         Map<VehicleSimView, VehicleSimView> nextVehicle
-                = computeNextVehicle(vehicleLists);
+                = computeNextVehicle(consolVecList);
 
         provideIntervalInfo(nextVehicle);
-        provideVehicleTrackingInfo(vehicleLists);
+        provideVehicleTrackingInfo(consolVecList, vehicleLists);
         provideTrafficSignal();
+    }
 
     // for debug
     /*
@@ -575,9 +626,7 @@ public class AutoDriverOnlySimulator implements Simulator {
          }
          }
          }
-         */
-    }
-
+     */
     /**
      * Provide sensing information to the intervalometers of all vehicles.
      *
@@ -586,7 +635,7 @@ public class AutoDriverOnlySimulator implements Simulator {
     private void provideIntervalInfo(
             Map<VehicleSimView, VehicleSimView> nextVehicle) {
 
-    // Now that we have this list set up, let's provide input to all the
+        // Now that we have this list set up, let's provide input to all the
         // Vehicles.
         for (VehicleSimView vehicle : vinToVehicles.values()) {
             // If the vehicle is autonomous
@@ -599,7 +648,7 @@ public class AutoDriverOnlySimulator implements Simulator {
                         double interval;
                         // If there is a next vehicle, then calculate it
                         if (nextVehicle.containsKey(autoVehicle)) {
-            // It's the distance from the front of this Vehicle to the point
+                            // It's the distance from the front of this Vehicle to the point
                             // at the rear of the Vehicle in front of it
                             interval = calcInterval(autoVehicle, nextVehicle.get(autoVehicle));
                         } else { // Otherwise, just set it to the maximum possible value
@@ -629,11 +678,13 @@ public class AutoDriverOnlySimulator implements Simulator {
     /**
      * Provide tracking information to vehicles.
      *
-     * @param vehicleLists a mapping from lanes to lists of vehicles sorted by
-     * their distance on their lanes
+     * @param consolidatedVehicleLists a mapping from lanes to lists of vehicles
+     * sorted by their distance on their lanes
+     * @param vehicleListsByLane a mapping of lanes to vehicles based on
+     * position in lane
      */
     private void provideVehicleTrackingInfo(
-            Map<Lane, SortedMap<Double, VehicleSimView>> vehicleLists) {
+            Map<Lane, SortedMap<Double, VehicleSimView>> consolidatedVehicleLists, Map<Lane, SortedMap<Double, VehicleSimView>> vehicleListsByLane) {
         // Vehicle Tracking
         for (VehicleSimView vehicle : vinToVehicles.values()) {
             // If the vehicle is autonomous
@@ -655,7 +706,7 @@ public class AutoDriverOnlySimulator implements Simulator {
 
                     // only consider the vehicles on the target lane
                     SortedMap<Double, VehicleSimView> vehiclesOnTargetLane
-                            = vehicleLists.get(targetLane);
+                            = consolidatedVehicleLists.get(targetLane);
 
                     // compute the distances and the corresponding vehicles
                     try {
@@ -675,11 +726,11 @@ public class AutoDriverOnlySimulator implements Simulator {
                         rearVehicle = null;
                     }
 
-          // assign the sensor readings
+                    // assign the sensor readings
                     autoVehicle.getFrontVehicleDistanceSensor().record(frontDst);
                     autoVehicle.getRearVehicleDistanceSensor().record(rearDst);
 
-          // assign the vehicles' velocities
+                    // assign the vehicles' velocities
                     if (frontVehicle != null) {
                         autoVehicle.getFrontVehicleSpeedSensor().record(
                                 frontVehicle.getVelocity());
@@ -732,8 +783,22 @@ public class AutoDriverOnlySimulator implements Simulator {
      */
     private double calcInterval(VehicleSimView vehicle,
             VehicleSimView nextVehicle) {
-    // From Chiu: Kurt, if you think this function is not okay, probably
+        // From Chiu: Kurt, if you think this function is not okay, probably
         // we should talk to see what to do.
+        /*Point2D pos = vehicle.getPosition();
+        if (nextVehicle.getShape().contains(pos)) {
+            return 0.0;
+        } else {
+            // TODO: make it more efficient
+            double interval = Double.MAX_VALUE;
+            for (Line2D edge : nextVehicle.getEdges()) {
+                double dst = edge.ptSegDist(pos);
+                if (dst < interval) {
+                    interval = dst;
+                }
+            }
+            return interval;
+        }*/
         Point2D pos = vehicle.getPosition();
         if (nextVehicle.getShape().contains(pos)) {
             return 0.0;
@@ -748,8 +813,27 @@ public class AutoDriverOnlySimulator implements Simulator {
             }
             return interval;
         }
+
+        //todo, this is still a problem, but seems to be preexisting even with this change below, so this was reverted to the old code until more investigation can be done
+        /* double interval = Double.MAX_VALUE;
+            double dst = Double.MAX_VALUE;
+            for (Line2D nextVehicleEdge : nextVehicle.getEdges()) {
+                for (Line2D vehicleEdge : vehicle.getEdges()) {
+                    if (nextVehicleEdge.intersectsLine(vehicleEdge)) {
+                        throw new RuntimeException("When attempting to calculate distance between vehicles for sensor updates, two vehicles were calculated to have collided.");
+                    }
+                    //check all endpoints of both line segments to the other line segment
+                    dst = Math.min(dst, Math.min(nextVehicleEdge.ptSegDist(vehicleEdge.getP1()), nextVehicleEdge.ptSegDist(vehicleEdge.getP2())));
+                    dst = Math.min(dst, Math.min(vehicleEdge.ptSegDist(nextVehicleEdge.getP1()), vehicleEdge.ptSegDist(nextVehicleEdge.getP2())));
+                    if (dst < interval) {
+                        interval = dst;
+                    }
+                }
+            }
+            return interval;
+        }*/
     }
-  // Kurt's code:
+    // Kurt's code:
     // interval = vehicle.getPosition().
     //   distance(nextVehicle.get(vehicle).getPointAtRear());
 
@@ -789,7 +873,7 @@ public class AutoDriverOnlySimulator implements Simulator {
 //    }
     }
 
-  /////////////////////////////////
+    /////////////////////////////////
     // STEP 3
     /////////////////////////////////
     /**
@@ -798,10 +882,24 @@ public class AutoDriverOnlySimulator implements Simulator {
     private void letDriversAct() {
         for (VehicleSimView vehicle : vinToVehicles.values()) {
             vehicle.getDriver().act();
+
+            if (Resources.vinToLane.get(vehicle.getVIN()) != null) {
+                if (Resources.vinToLane.get(vehicle.getVIN()) != vehicle.getDriver().getCurrentLane()) {
+                    Resources.laneToVin.get(Resources.vinToLane.get(vehicle.getVIN())).remove(vehicle.getVIN());
+                }
+            }
+            Resources.laneToVin.get(vehicle.getDriver().getCurrentLane()).add(vehicle.getVIN());
+            Resources.vinToLane.put(vehicle.getVIN(), vehicle.getDriver().getCurrentLane());
+
+            if (vehicle.getDriver().getState() == State.V2I_TRAVERSING) {
+                Resources.traversingVehicles.add(vehicle.getVIN());
+            } else if (vehicle.getDriver().getState() == State.V2I_CLEARING) {
+                Resources.traversingVehicles.remove(vehicle.getVIN());
+            }
         }
     }
 
-  /////////////////////////////////
+    /////////////////////////////////
     // STEP 4
     /////////////////////////////////
     /**
@@ -815,7 +913,7 @@ public class AutoDriverOnlySimulator implements Simulator {
         }
     }
 
-  /////////////////////////////////
+    /////////////////////////////////
     // STEP 5
     /////////////////////////////////
     /**
@@ -880,7 +978,8 @@ public class AutoDriverOnlySimulator implements Simulator {
                     vehicle.receive(msg);
                 }
             }
-      // Done delivering the IntersectionManager's messages, so clear the
+
+            // Done delivering the IntersectionManager's messages, so clear the
             // outbox.
             senderIM.clearOutbox();
         }
@@ -970,7 +1069,7 @@ public class AutoDriverOnlySimulator implements Simulator {
         return distance <= power;
     }
 
-  /////////////////////////////////
+    /////////////////////////////////
     // STEP 6
     /////////////////////////////////
     /**
@@ -991,19 +1090,18 @@ public class AutoDriverOnlySimulator implements Simulator {
                 vehicle.askedToStop();
             }
 
-      // if this vehicle is in the intersection, judged by DCL,
+            // if this vehicle is in the intersection, judged by DCL,
             // vehiclesInside++, it's the counter
             // TODO not understanding where to get intersection boundary data!!
             if (p2.getX() >= 149.5 && p2.getX() <= 175.5
                     && p2.getY() >= 149.5 && p2.getY() <= 175.5) {
                 vehiclesInside++;
             }
-            
+
 //            for (Road road : basicMap.getRoads()) {
 //                for(Lane lane : road.getLanes())
 //                link.intersect(vehicle, currentTime, p1, p2);
 //            }
-
             for (DataCollectionLine line : basicMap.getDataCollectionLines()) {
                 line.intersect(vehicle, currentTime, p1, p2);
             }
@@ -1020,7 +1118,7 @@ public class AutoDriverOnlySimulator implements Simulator {
          */
     }
 
-  /////////////////////////////////
+    /////////////////////////////////
     // STEP 7
     /////////////////////////////////
     /**
@@ -1036,7 +1134,8 @@ public class AutoDriverOnlySimulator implements Simulator {
         List<Integer> removedVINs = new ArrayList<Integer>(vinToVehicles.size());
         for (int vin : vinToVehicles.keySet()) {
             VehicleSimView v = vinToVehicles.get(vin);
-      // If the vehicle is no longer in the layout
+
+            // If the vehicle is no longer in the layout
             // TODO: this should be replaced with destination zone.
             if (!v.getShape().intersects(mapBoundary)) {
                 // Process all the things we need to from this vehicle
@@ -1052,36 +1151,84 @@ public class AutoDriverOnlySimulator implements Simulator {
         for (int vin : removedVINs) {
 
             completedVINs.add(vin);
+
+            Resources.laneToVin.get(Resources.vinToLane.get(vin)).remove(vin);
+            Resources.vinToLane.remove(vin);
+
             VehicleSimView v = vinToVehicles.get(vin);
+            Driver vehicleDriver = v.getDriver();
             double travelTime = currentTime - v.getSpawnTime();
+            double lastMax;
+            //todo, I'm committing a sin with regard to this inheritance/instance of checking, but there's something weird going on with VINs and initial speed limits at the Driver class level (vins start at -1 a lot of times and the vehicle is acted on, and they have a speed less than the limit on spawn), so that's why I did it at the higher level
+            Double delay = (vehicleDriver instanceof AutoDriver ? ((AutoDriver) vehicleDriver).getDelayPerTimeStep() * SimConfig.TIME_STEP : null);
+            Double delayNoInter = (vehicleDriver instanceof AutoDriver ? ((AutoDriver) vehicleDriver).getDelayPerTimeStepExcludingIntersections() * SimConfig.TIME_STEP : null);
 
             if (v.isHuman()) {
                 TrafficSignalExpr.Htotal++;
                 TrafficSignalExpr.HtotalTime += travelTime;
+                lastMax = DesignatedLanesExpr.maxTravelTimeH;
                 DesignatedLanesExpr.maxTravelTimeH = Math.max(travelTime, DesignatedLanesExpr.maxTravelTimeH);
+                if (shouldUpdateTime(lastMax, DesignatedLanesExpr.maxTravelTimeH)) {
+                    DesignatedLanesExpr.timeMaxTravelHCompletion = currentTime;
+                }
+                DesignatedLanesExpr.humanVehicleTimesByDirection.get(DesignatedLanesExpr.vinToTimeIndex.get(vin)).get(DesignatedLanesExpr.timingIndexMap.get(DesignatedLanesExpr.vinToSpawnDirection.get(vin))).add(travelTime);
+                if (delay != null && delayNoInter != null) {
+                    DesignatedLanesExpr.humanVehicleDelaysByDirection.get(DesignatedLanesExpr.vinToTimeIndex.get(vin)).get(DesignatedLanesExpr.timingIndexMap.get(DesignatedLanesExpr.vinToSpawnDirection.get(vin))).add(delay);
+                    DesignatedLanesExpr.humanVehicleDelaysByDirectionNoInter.get(DesignatedLanesExpr.vinToTimeIndex.get(vin)).get(DesignatedLanesExpr.timingIndexMap.get(DesignatedLanesExpr.vinToSpawnDirection.get(vin))).add(delayNoInter);
+                }
+                if (vehicleDriver instanceof AutoDriver && !((AutoDriver) vehicleDriver).getWasStopped()) {
+                    DesignatedLanesExpr.humanVehicleDelaysExcludingStops.get(DesignatedLanesExpr.vinToTimeIndex.get(vin)).get(DesignatedLanesExpr.timingIndexMap.get(DesignatedLanesExpr.vinToSpawnDirection.get(vin))).add(delayNoInter);
+                }
             } else if (v.withAdaptiveCruiseControll()) {
                 TrafficSignalExpr.SAVtotal++;
                 TrafficSignalExpr.SAVtotalTime += travelTime;
+                lastMax = DesignatedLanesExpr.maxTravelTimeACC;
                 DesignatedLanesExpr.maxTravelTimeACC = Math.max(travelTime, DesignatedLanesExpr.maxTravelTimeACC);
+                if (shouldUpdateTime(lastMax, DesignatedLanesExpr.maxTravelTimeACC)) {
+                    DesignatedLanesExpr.timeMaxTravelACCCompletion = currentTime;
+                }
             } else if (v.withCruiseControll()) {
                 TrafficSignalExpr.SAVtotal++;
                 TrafficSignalExpr.SAVtotalTime += travelTime;
+                lastMax = DesignatedLanesExpr.maxTravelTimeCC;
                 DesignatedLanesExpr.maxTravelTimeCC = Math.max(travelTime, DesignatedLanesExpr.maxTravelTimeCC);
+                if (shouldUpdateTime(lastMax, DesignatedLanesExpr.maxTravelTimeCC)) {
+                    DesignatedLanesExpr.timeMaxTravelCCCompletion = currentTime;
+                }
             } else {
                 TrafficSignalExpr.AVtotal++;
                 TrafficSignalExpr.AVtotalTime += travelTime;
+                lastMax = DesignatedLanesExpr.maxTravelTimeAV;
                 DesignatedLanesExpr.maxTravelTimeAV = Math.max(travelTime, DesignatedLanesExpr.maxTravelTimeAV);
+                if (shouldUpdateTime(lastMax, DesignatedLanesExpr.maxTravelTimeAV)) {
+                    DesignatedLanesExpr.timeMaxTravelAVCompletion = currentTime;
+                }
+                DesignatedLanesExpr.autoVehicleTimesByDirection.get(DesignatedLanesExpr.vinToTimeIndex.get(vin)).get(DesignatedLanesExpr.timingIndexMap.get(DesignatedLanesExpr.vinToSpawnDirection.get(vin))).add(travelTime);
+                if (delay != null && delayNoInter != null) {
+                    DesignatedLanesExpr.autoVehicleDelaysByDirection.get(DesignatedLanesExpr.vinToTimeIndex.get(vin)).get(DesignatedLanesExpr.timingIndexMap.get(DesignatedLanesExpr.vinToSpawnDirection.get(vin))).add(delay);
+                    DesignatedLanesExpr.autoVehicleDelaysByDirectionNoInter.get(DesignatedLanesExpr.vinToTimeIndex.get(vin)).get(DesignatedLanesExpr.timingIndexMap.get(DesignatedLanesExpr.vinToSpawnDirection.get(vin))).add(delayNoInter);
+                }
+                if (vehicleDriver instanceof AutoDriver && !((AutoDriver) vehicleDriver).getWasStopped()) {
+                    DesignatedLanesExpr.autoVehicleDelaysExcludingStops.get(DesignatedLanesExpr.vinToTimeIndex.get(vin)).get(DesignatedLanesExpr.timingIndexMap.get(DesignatedLanesExpr.vinToSpawnDirection.get(vin))).add(delayNoInter);
+                }
             }
 
             completionTimes.add(travelTime);
             numOfCompletedVehicles++;
             vinToVehicles.remove(vin);
+            DesignatedLanesExpr.vinToTimeIndex.remove(vin);
+            DesignatedLanesExpr.vinToSpawnDirection.remove(vin);
         }
 
         return completedVINs;
     }
 
-  /////////////////////////////////
+    //compares a previous double and a current double (representing max times), if they don't equal returns true
+    private boolean shouldUpdateTime(double prev, double current) {
+        return prev != current;
+    }
+
+    /////////////////////////////////
     // DEBUG
     /////////////////////////////////
     /**
@@ -1098,14 +1245,15 @@ public class AutoDriverOnlySimulator implements Simulator {
         }
     }
 
-  /////////////////////////////////
+    /////////////////////////////////
     // PUBLIC METHODS
     /////////////////////////////////
-	// information retrieval
+    // information retrieval
     /**
      * If the current time exceeds the end of the total duration of traffic
      * lights, re-select the proper red signal time.
      */
+    //used for red phase adaptive
     private void updateTrafficSignal() {
         // get the list of signal controllers
         double tl = GridMapUtil.getTrafficLevel(); // traffic level
@@ -1114,16 +1262,16 @@ public class AutoDriverOnlySimulator implements Simulator {
         double rp = RedPhaseData.getRedPhase(hp, tl); // red phase
         double offset = ApproxNPhasesTrafficSignalRequestHandler.CyclicSignalController.getEndTime();
 
-        TrafficSignalPhase phase = Resources.phase;
+        RingAndBarrier ringAndBarrier = Resources.ringAndBarrier;
         Map<Integer, SignalController> signalControllers = Resources.signalControllers;
 
-        phase.resetRedDurations(rp);
+        ringAndBarrier.LEGACY_resetRedDurations(rp);
         System.out.printf("Appropriate Red Phase Length: %f\n", rp);
 
         for (Road road : Resources.im.getIntersection().getEntryRoads()) {
             for (Lane lane : road.getLanes()) {
                 CyclicSignalController controller
-                        = phase.calcCyclicSignalController(road);
+                        = ringAndBarrier.LEGACY_calcCyclicSignalController(road);
                 controller.setOffset(offset);
 
                 signalControllers.put(lane.getId(), controller);
@@ -1152,4 +1300,41 @@ public class AutoDriverOnlySimulator implements Simulator {
         }
         return ans / completionTimes.size();
     }
+
+    @Override
+    public int getScheduledVehiclesRemaining() {
+        HashSet<SpawnSpecGenerator> seenGenerators = new HashSet<SpawnSpecGenerator>();
+        boolean foundScheduler = false;
+        int totalLeft = 0;
+        for (SpawnPoint sp : basicMap.getSpawnPoints()) {
+            SpawnSpecGenerator specGen = sp.getVehicleSpecChooser();
+            if (!seenGenerators.contains(specGen)) {
+                seenGenerators.add(specGen);
+                if (specGen != null && specGen instanceof FileSpawnSpecGenerator) {
+                    totalLeft += ((FileSpawnSpecGenerator) specGen).getVehiclesLeftInCurrentTimeSlot();
+                    foundScheduler = true;
+                }
+            }
+        }
+        return (foundScheduler ? totalLeft : -1);
+    }
+
+    @Override
+    public int getTotalScheduledVehicles() {
+        HashSet<SpawnSpecGenerator> seenGenerators = new HashSet<SpawnSpecGenerator>();
+        boolean foundScheduler = false;
+        int totalLeft = 0;
+        for (SpawnPoint sp : basicMap.getSpawnPoints()) {
+            SpawnSpecGenerator specGen = sp.getVehicleSpecChooser();
+            if (!seenGenerators.contains(specGen)) {
+                seenGenerators.add(specGen);
+                if (specGen != null && specGen instanceof FileSpawnSpecGenerator) {
+                    totalLeft += ((FileSpawnSpecGenerator) specGen).getTotalVehiclesScheduled();
+                    foundScheduler = true;
+                }
+            }
+        }
+        return (foundScheduler ? totalLeft : -1);
+    }
+
 }

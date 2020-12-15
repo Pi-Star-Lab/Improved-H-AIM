@@ -30,37 +30,50 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 package aim4.gui.parampanel;
 
+import aim4.config.Debug;
 import javax.swing.BoxLayout;
 import javax.swing.JPanel;
 
 import aim4.gui.component.LabeledSlider;
 import aim4.sim.setup.BasicSimSetup;
+import java.awt.event.ActionEvent;
+import java.awt.event.ActionListener;
+import java.io.File;
+import javax.swing.JButton;
+import javax.swing.JFileChooser;
+
 
 /**
  * The autonomous driver only simulation parameter panel.
  */
-public class AutoDriverOnlyParamPanel extends JPanel {
-  private static final long serialVersionUID = 1L;
+public class AutoDriverOnlyParamPanel extends JPanel implements ActionListener {
 
-  LabeledSlider trafficRateSlider;
-  LabeledSlider speedLimitSlider;
-  LabeledSlider stopDistToIntersectionSlider;
-  LabeledSlider numOfColumnSlider;
-  LabeledSlider numOfRowSlider;
-  LabeledSlider lanesPerRoadSlider;
+    private static final long serialVersionUID = 1L;
 
-  /**
-   * Create the autonomous driver only simulation parameter panel.
-   *
-   * @param simSetup  the simulation setup
-   */
-  public AutoDriverOnlyParamPanel(BasicSimSetup simSetup) {
-    setLayout(new BoxLayout(this, BoxLayout.PAGE_AXIS));
+    LabeledSlider trafficRateSlider;
+    LabeledSlider speedLimitSlider;
+    LabeledSlider stopDistToIntersectionSlider;
+    LabeledSlider numOfColumnSlider;
+    LabeledSlider numOfRowSlider;
+    LabeledSlider lanesPerRoadSlider;
+    int lastnumcol;
+    int lastnumrow;
+    JButton trafficFromFileButton;
+    File trafficfile;
+    JFileChooser fctraff;
+    JButton allowLaneChangeButton;
 
-    // create the components
+    /**
+     * Create the autonomous driver only simulation parameter panel.
+     *
+     * @param simSetup the simulation setup
+     */
+    public AutoDriverOnlyParamPanel(BasicSimSetup simSetup) {
+        setLayout(new BoxLayout(this, BoxLayout.PAGE_AXIS));
 
-    trafficRateSlider =
-      new LabeledSlider(0.0, 2500.0,
+        // create the components
+        trafficRateSlider
+                = new LabeledSlider(0.0, 2500.0,
                         simSetup.getTrafficLevel() * 3600.0,
                         500.0, 100.0,
                         "Traffic Level: %.0f vehicles/hour/lane",
@@ -105,63 +118,138 @@ public class AutoDriverOnlyParamPanel extends JPanel {
                         1.0, 1.0,
                         "Number of Lanes per Road: %.0f",
                         "%.0f");
-    add(lanesPerRoadSlider);
+        add(lanesPerRoadSlider);
 
+        fctraff = new JFileChooser();
+        fctraff.setMultiSelectionEnabled(false);
+        fctraff.setCurrentDirectory(new File(System.getProperty("user.dir")));
 
-  }
+        trafficFromFileButton = new JButton("Traffic From File");
+        trafficFromFileButton.addActionListener(this);
+        add(trafficFromFileButton);
 
-  /**
-   * Get the traffic rate.
-   *
-   * @return the traffic rate
-   */
-  public double getTrafficRate() {
-    return trafficRateSlider.getValue() / 3600.0;
-  }
+        allowLaneChangeButton = new JButton("Allow Lane Changing");
+        allowLaneChangeButton.addActionListener(this);
+        add(allowLaneChangeButton);
 
-  /**
-   * Get the speed limit.
-   *
-   * @return the speed limit
-   */
-  public double getSpeedLimit() {
-    return speedLimitSlider.getValue();
-  }
+        lastnumcol = -1;
+        lastnumrow = -1;
+    }
 
-  /**
-   * Get the stop distance to intersection.
-   *
-   * @return the stop distance to intersection
-   */
-  public double getStopDistToIntersection() {
-    double d = stopDistToIntersectionSlider.getValue();
-    return (d < 1.0)?1.0:d;
-  }
+    /**
+     * Get the traffic rate.
+     *
+     * @return the traffic rate
+     */
+    public double getTrafficRate() {
+        return trafficRateSlider.getValue() / 3600.0;
+    }
 
-  /**
-   * Get the number of columns.
-   *
-   * @return the number of columns
-   */
-  public int getNumOfColumns() {
-    return (int)numOfColumnSlider.getValue();
-  }
+    /**
+     * Get the speed limit.
+     *
+     * @return the speed limit
+     */
+    public double getSpeedLimit() {
+        return speedLimitSlider.getValue();
+    }
 
-  /**
-   * Get the number of rows.
-   *
-   * @return the number of rows
-   */
-  public int getNumOfRows() {
-    return (int)numOfRowSlider.getValue();
-  }
+    /**
+     * Get the stop distance to intersection.
+     *
+     * @return the stop distance to intersection
+     */
+    public double getStopDistToIntersection() {
+        double d = stopDistToIntersectionSlider.getValue();
+        return (d < 1.0) ? 1.0 : d;
+    }
 
-  /**
-   * Get the number of lanes per road.
-   *
-   * @return the number of lanes per road
-   */
-  public int getLanesPerRoad() {
-    return (int)lanesPerRoadSlider.getValue();
-  }
+    /**
+     * Get the number of columns.
+     *
+     * @return the number of columns
+     */
+    public int getNumOfColumns() {
+        if (lastnumcol == -1) {
+            return (int) numOfColumnSlider.getValue();
+        } else {
+            return 1;
+        }
+    }
+
+    /**
+     * Get the number of rows.
+     *
+     * @return the number of rows
+     */
+    public int getNumOfRows() {
+        if (lastnumrow == -1) {
+            return (int) numOfRowSlider.getValue();
+        } else {
+            return 1;
+        }
+    }
+
+    /**
+     * Get the number of lanes per road.
+     *
+     * @return the number of lanes per road
+     */
+    public int getLanesPerRoad() {
+        return (int) lanesPerRoadSlider.getValue();
+    }
+
+    @Override
+    public void actionPerformed(ActionEvent e) {
+        if (e.getSource() == trafficFromFileButton) {
+            if (trafficfile == null) {
+                if (fctraff.showOpenDialog(this) == JFileChooser.APPROVE_OPTION) {
+                    trafficfile = fctraff.getSelectedFile();
+                    fctraff.setCurrentDirectory(trafficfile.getParentFile());
+                    trafficFromFileButton.setText("Clear Traffic File Selection");
+
+                }
+            } else {
+                trafficfile = null;
+                trafficFromFileButton.setText("Traffic From File");
+            }
+        } else if (e.getSource() == allowLaneChangeButton) {
+            Debug.CAN_CHANGE_LANE = !Debug.CAN_CHANGE_LANE;
+            if (Debug.CAN_CHANGE_LANE) {
+                allowLaneChangeButton.setText("Disallow Lane Changing");
+            } else {
+                allowLaneChangeButton.setText("Allow Lane Changing");
+            }
+
+        }
+
+        if (trafficfile == null) {
+            showSingleIntersectionAttributes();
+        } else {
+            hideSingleIntersectionAttributes();
+        }
+    }
+
+    public File getTrafficfile() {
+        return trafficfile;
+    }
+
+    private void hideSingleIntersectionAttributes() {
+        lastnumcol = (int) numOfColumnSlider.getValue();
+        lastnumrow = (int) numOfRowSlider.getValue();
+
+        trafficRateSlider.setVisible(false);
+        numOfColumnSlider.setVisible(false);
+        numOfRowSlider.setVisible(false);
+    }
+
+    private void showSingleIntersectionAttributes() {
+        trafficRateSlider.setVisible(true);
+        numOfColumnSlider.setVisible(true);
+        numOfRowSlider.setVisible(true);
+
+        lastnumcol = -1;
+        lastnumrow = -1;
+    }
 }
+

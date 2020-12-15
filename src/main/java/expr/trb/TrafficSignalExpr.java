@@ -190,7 +190,8 @@ public class TrafficSignalExpr {
                         150, // distance between
                         0.28, // traffic level
                         // (for now, it can be any number)
-                        1.0 // stop distance before intersection
+                        1.0, // stop distance before intersection
+                        null
                 );
         
         BasicSimSetup basicSimSetup2 = null;
@@ -408,7 +409,8 @@ public class TrafficSignalExpr {
                                     150, // distance between
                                     trafficLevel, // traffic level
                                     // (for now, it can be any number)
-                                    1.0 // stop distance before intersection
+                                    1.0, // stop distance before intersection
+                                    null
                             );
                     
                     BasicSimSetup basicSimSetup2 = null;
@@ -558,10 +560,10 @@ public class TrafficSignalExpr {
         dropMessageProb = Double.parseDouble(args[6]);
         droppedTimeToDetect = Double.parseDouble(args[7]);
         Util.resetRand(Integer.parseInt(args[8]));
-        //DesignatedLanesExpr.DESIGNATED_LANES = Integer.parseInt(args[9]);
+        //DesignatedLanesExpr.exprType = Integer.parseInt(args[9]);
         //DesignatedLanesExpr.ALLOW_STRIGHT_ON_RIGHT = args[10].equals("1");
         String outfile = args[11] + ".csv";
-        //System.out.println("designated = " + DESIGNATED_LANES);
+        //System.out.println("designated = " + exprType);
         
         //String outfilePath = "/Users/guni/Desktop/exp-res/";//Mac laptop
         //String outfilePath = "C:\\Users\\user\\Desktop\\experiments\\Delta-tolling\\";//Dell leptop
@@ -659,7 +661,8 @@ public class TrafficSignalExpr {
                         150, // distance between
                         trafficLevel, // traffic level
                         // (for now, it can be any number)
-                        1.0 // stop distance before intersection
+                        1.0, // stop distance before intersection
+                        null
                 );
         
         BasicSimSetup basicSimSetup2 = null;

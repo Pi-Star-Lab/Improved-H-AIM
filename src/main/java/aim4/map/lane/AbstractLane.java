@@ -30,6 +30,7 @@
  */
 package aim4.map.lane;
 
+import aim4.map.Road;
 import aim4.map.LaneSegment;
 import aim4.map.SpawnPoint;
 import java.awt.Shape;
@@ -82,8 +83,18 @@ public abstract class AbstractLane implements Lane {
      */
     private LaneIM laneIM;
 
+    //todo: decouple this by letting an intermediary object map these together?
+    /**
+     * The road this lane is associated with.
+     */
+    private final Road containingRoad;
+
+    /**
+     * SpawnPoint associated with this lane.
+     */
+    SpawnPoint spawnPoint = null;
+
     protected LaneSegment[] segments;
-    private SpawnPoint spawnPoint;
 
     /////////////////////////////////
     // CONSTRUCTORS
@@ -91,8 +102,9 @@ public abstract class AbstractLane implements Lane {
     /**
      * Create a new Lane.
      */
-    public AbstractLane(double speedLimit) {
+    public AbstractLane(double speedLimit, Road containingRoad) {
         this.speedLimit = speedLimit;
+        this.containingRoad = containingRoad;
         this.laneIM = new LaneIM(this);
     }
 
@@ -131,7 +143,7 @@ public abstract class AbstractLane implements Lane {
         return laneIM;
     }
 
-  /////////////////////////////////
+    /////////////////////////////////
     // PUBLIC METHODS
     /////////////////////////////////
     // the adjacent lanes
@@ -183,7 +195,7 @@ public abstract class AbstractLane implements Lane {
         this.prevLane = prevLane;
     }
 
-  /////////////////////////////////
+    /////////////////////////////////
     // PUBLIC METHODS
     /////////////////////////////////
     // neighor
@@ -235,7 +247,7 @@ public abstract class AbstractLane implements Lane {
         rightNeighbor = ln;
     }
 
-  /////////////////////////////////
+    /////////////////////////////////
     // PUBLIC METHODS
     /////////////////////////////////
     // lanes as lines
@@ -327,7 +339,7 @@ public abstract class AbstractLane implements Lane {
     @Override
     public abstract Point2D intersectionPoint(Line2D l);
 
-  /////////////////////////////////
+    /////////////////////////////////
     // PUBLIC METHODS
     /////////////////////////////////
     // lanes as shapes
@@ -379,27 +391,51 @@ public abstract class AbstractLane implements Lane {
     @Override
     public abstract Point2D rightIntersectionPoint(Line2D l);
 
+    /**
+     * {@inheritDoc}
+     */
     @Override
-    public int getNumberOfCarsOnLane(int segment) {//Check link instead of lane
-        return segments[segment].getNumberOfCars();
+    public Road getContainingRoad() {
+        return containingRoad;
     }
 
+    /**
+     * Registers SpawnPoint with lane. Fails if a SpawnPoint was previously set.
+     *
+     * @param sp SpawnPoint to permanently associate with the lane.
+     */
+    @Override
+    public void registerSpawnPoint(SpawnPoint sp) {
+        if (spawnPoint == null) {
+            spawnPoint = sp;
+        }
+    }
+
+    /**
+     * {@inheritDoc}
+     */
     @Override
     public SpawnPoint getSpawnPoint() {
         return spawnPoint;
     }
 
     @Override
+    public int getNumberOfCarsOnLane(int segment) {//Check link instead of lane
+        return segments[segment].getNumberOfCars();
+    }
+
+    @Override
     public void enter(int segment) {
         segments[segment].enter();
     }
-    
+
     @Override
     public void exit(int segment) {
         segments[segment].exit();
     }
 
+    //todo!! AP this was kept in during the merge to support current code. Remove and refactor with registerSpawnPoint
     public void setSpawnPoint(SpawnPoint spawnPoint) {
-        this.spawnPoint = spawnPoint;
+        registerSpawnPoint(spawnPoint);
     }
 }

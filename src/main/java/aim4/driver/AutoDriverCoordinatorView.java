@@ -143,4 +143,15 @@ public interface AutoDriverCoordinatorView {
    * @return the state
    */
   State getState();
+  
+  /**
+   * @return the lane this driver used to enter the current intersection, null if no reservation has been processed or if exiting the intersection.
+   */
+  Lane getEntryLane();
+  
+  /**
+   * 
+   * @param lane lane the lane this driver used to enter the current intersection, set to null if no reservation has been processed or if exiting the intersection.
+   */
+  void setEntryLane(Lane lane);
 }

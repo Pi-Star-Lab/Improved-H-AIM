@@ -63,6 +63,7 @@ import aim4.util.Registry;
 import aim4.vehicle.VehicleSimView;
 import aim4.vehicle.VehicleUtil;
 import expr.trb.TrafficSignalExpr;
+import java.util.Collections;
 
 /**
  * The base policy.
@@ -313,7 +314,7 @@ public final class BasePolicy implements Policy, ExtendedBasePolicyCallback {
     // Check to see if not all of the arrival times in this reservation
         // request are too far in the future
         BasePolicy.removeProposalWithLargeArrivalTime(
-                myProposals, currentTime + V2IManager.MAXIMUM_FUTURE_RESERVATION_TIME);
+                myProposals, currentTime);
         if (myProposals.isEmpty()) {
             return new ProposalFilterResult(Reject.Reason.ARRIVAL_TIME_TOO_LARGE);
         }
@@ -373,17 +374,17 @@ public final class BasePolicy implements Policy, ExtendedBasePolicyCallback {
      * the maximum future reservation time.
      *
      * @param proposals a set of proposals
-     * @param futureTime the future arrival time beyond which a proposal is
-     * invalid.
+     * @param currentTime the current time used to calculate the future time beyond which the reservation is invalid.
      */
     private static void removeProposalWithLargeArrivalTime(
             List<Request.Proposal> proposals,
-            double futureTime) {
+            double currentTime) {
         for (Iterator<Request.Proposal> tpIter = proposals.listIterator();
                 tpIter.hasNext();) {
             Request.Proposal prop = tpIter.next();
+            
             // If this one is in the future
-            if (prop.getArrivalTime() > futureTime) {
+            if (prop.getArrivalTime() > currentTime+prop.getIntersectionManager().getMaxAllowedFutureReservationTimeOnLane(prop.getArrivalLane())) {
                 tpIter.remove();
             }
         }
@@ -551,8 +552,12 @@ public final class BasePolicy implements Policy, ExtendedBasePolicyCallback {
 
         // debug
         if (Debug.isTargetVIN(vin)) {
-            System.err.printf("workinglist = %s\n",
-                    reserveParam.getGridPlan().getWorkingList());
+            List<ReservationGrid.TimeTile> sorted = new ArrayList<ReservationGrid.TimeTile>(reserveParam.getGridPlan().getWorkingList());
+                Collections.sort(sorted);
+                    System.err.printf("workinglist = %s\n",
+                    sorted);
+            //System.err.printf("workinglist = %s\n",
+            //        reserveParam.getGridPlan().getWorkingList());
         }
     }
 

@@ -30,6 +30,8 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 package aim4.map.lane;
 
+
+import aim4.map.Road;
 import aim4.config.Debug;
 import aim4.map.LaneSegment;
 import java.awt.geom.GeneralPath;
@@ -112,9 +114,10 @@ public class LineSegmentLane extends AbstractLane {
    * @param line       the line segment representing the center of the Lane
    * @param width      the width of the Lane, in meters
    * @param speedLimit the speed limit of the Lane, in meters per second
+     * @param containingRoad the road that contains this lane
    */
-  public LineSegmentLane(Line2D line, double width, double speedLimit, int segmentsCount) {
-    super(speedLimit);
+  public LineSegmentLane(Line2D line, double width, double speedLimit, int segmentsCount, Road containingRoad) {
+    super(speedLimit, containingRoad);
 
     this.line = line;
     this.width = width;
@@ -149,11 +152,12 @@ public class LineSegmentLane extends AbstractLane {
    * @param p2         the ending Point of the Lane
    * @param width      the width of the Lane, in meters
    * @param speedLimit the speed limit of the Lane, in meters per second
+     * @param containingRoad the road that contains this lane
    */
   public LineSegmentLane(Point2D p1, Point2D p2,
-                         double width, double speedLimit, int segments) {
+                         double width, double speedLimit, int segments, Road containingRoad) {
     // Call the previous version after making a Line...
-    this(new Line2D.Double(p1, p2), width, speedLimit, segments);
+    this(new Line2D.Double(p1, p2), width, speedLimit, segments, containingRoad);
   }
 
   /**
@@ -165,11 +169,12 @@ public class LineSegmentLane extends AbstractLane {
    * @param y2         the y coordinate of the ending point of the Lane
    * @param width      the width of the Lane, in meters
    * @param speedLimit the speed limit of the Lane, in meters per second
+     * @param containingRoad the road that contains this lane
    */
   public LineSegmentLane(double x1, double y1, double x2, double y2,
-                         double width, double speedLimit, int segments) {
+                         double width, double speedLimit, int segments, Road containingRoad) {
     // Call the first version after making a Line...
-    this(new Line2D.Double(x1, y1, x2, y2), width, speedLimit, segments);
+    this(new Line2D.Double(x1, y1, x2, y2), width, speedLimit, segments, containingRoad);
   }
 
 
@@ -473,12 +478,10 @@ public class LineSegmentLane extends AbstractLane {
   
   @Override
   public int getIndexInRoad(){
-      Road currentRoad = Debug.currentMap.getRoad(this);
-      List<Lane> allLanes = currentRoad.getLanes();
-      for (int i = 0; i < allLanes.size(); i++) {
-          if(this.getId() == allLanes.get(i).getId()){
-              return i;
-          }
+      Road currentRoad = getContainingRoad(); 
+      int index = currentRoad.getRelativeIndexOfLaneInRoad(this);
+      if (index >=0) {
+          return index;
       }
       assert false : "No such lane in road at LineSegmentLane -> getIndexInRoad()";
       return -1;

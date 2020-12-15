@@ -30,6 +30,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 package aim4.gui;
 
+import aim4.config.Constants;
 import java.awt.BasicStroke;
 import java.awt.Color;
 import java.awt.Font;
@@ -68,10 +69,14 @@ import aim4.config.Debug;
 import aim4.config.DebugPoint;
 import aim4.config.Resources;
 import aim4.config.SimConfig;
+import aim4.config.SimConfig.SIGNAL_TYPE;
 import aim4.config.SimConfig.VEHICLE_TYPE;
+import aim4.config.TrafficSignal;
 import aim4.driver.AutoDriver;
 import aim4.driver.coordinator.V2ICoordinator;
 import aim4.im.IntersectionManager;
+import aim4.im.v2i.RequestHandler.ApproxNPhasesTrafficSignalRequestHandler;
+import aim4.im.v2i.RequestHandler.FullyActuatedSignalController;
 import aim4.im.v2i.V2IManager;
 import aim4.im.v2i.RequestHandler.TrafficSignalRequestHandler;
 import aim4.im.v2i.policy.BasePolicy;
@@ -95,6 +100,7 @@ import static expr.trb.TrafficSignalExpr.AVtotal;
 import static expr.trb.TrafficSignalExpr.AVtotalTime;
 import static expr.trb.TrafficSignalExpr.Htotal;
 import static expr.trb.TrafficSignalExpr.HtotalTime;
+import java.awt.FontMetrics;
 import java.io.InputStream;
 
 /**
@@ -205,6 +211,11 @@ public class Canvas extends JPanel implements ComponentListener,
   private static final Color ROAD_BOUNDARY_COLOR = Color.YELLOW;
   /** The stroke of the road boundary */
   private static final Stroke ROAD_BOUNDARY_STROKE = new BasicStroke(0.3f);
+  /** Lane closed marker color */
+  private static final Color LANE_CLOSED_MARKER_COLOR = Color.RED;
+  /** Lane closed X font */
+  private static final Font LANE_CLOSED_MARKER_FONT =
+      new Font("Monospaced", Font.BOLD, 5);
   // Drawing elements for lane separators
   /**
    * The color with which to draw lines separating traffic traveling in the
@@ -686,6 +697,63 @@ public class Canvas extends JPanel implements ComponentListener,
       bgBuffer.setStroke(IM_OUTLINE_STROKE);
       bgBuffer.draw(im.getIntersection().getArea());
     }
+    
+    bgBuffer.setPaint(LANE_CLOSED_MARKER_COLOR);
+    bgBuffer.setFont(LANE_CLOSED_MARKER_FONT);
+    FontMetrics fontInfo = bgBuffer.getFontMetrics();
+    float textYAdjust = (fontInfo.getHeight()-fontInfo.getDescent()-fontInfo.getLeading())/2;
+    int textXAdjust = fontInfo.stringWidth("X")/2;
+    for (Lane lane : im.getIntersection().getLanes()) {
+        int x;
+        int y;
+        Constants.Direction dir;
+        if (lane.getLaneIM().getMappedTurnDirectionsForAllVehicleTypes(im) == null) {
+            dir = Util.getDirectionFromHeadingCardinal(im.getIntersection().getEntryHeading(lane));
+            Point2D entryPoint = im.getIntersection().getEntryPoint(lane);
+            x = (int)entryPoint.getX();
+            y = (int)entryPoint.getY();
+            switch (dir) {
+                case EAST:
+                    x-=2*textXAdjust+TRAFFIC_LIGHT_RADIUS;
+                    break;
+                case WEST:
+                    x+=textXAdjust+TRAFFIC_LIGHT_RADIUS;
+                    break;
+                case SOUTH:
+                    y-=textYAdjust+TRAFFIC_LIGHT_RADIUS;
+                    break;
+                case NORTH:
+                    y+=textYAdjust+TRAFFIC_LIGHT_RADIUS;
+                    break;
+                default:
+                    throw new RuntimeException("Expected a cardinal direction when drawing lane closures, got: " + dir.name());
+            }
+            bgBuffer.drawString("X", x-textXAdjust, y+textYAdjust);
+        }
+        if (im.getLanesWhichHaveAnExitLaneMappingByAnyActionAndAnyVehicleTypeToLane(lane) == null) {
+            dir = Util.getDirectionFromHeadingCardinal(im.getIntersection().getExitHeading(lane));
+            Point2D exitPoint = im.getIntersection().getExitPoint(lane);
+            x = (int)exitPoint.getX();
+            y = (int)exitPoint.getY();
+            switch (dir) {
+                case EAST:
+                    x+=textXAdjust;
+                    break;
+                case WEST:
+                    x-=textXAdjust;
+                    break;
+                case SOUTH:
+                    y+=textYAdjust;
+                    break;
+                case NORTH:
+                    y-=textYAdjust;
+                    break;
+                default:
+                    throw new RuntimeException("Expected a cardinal direction when drawing lane closures, got: " + dir.name());
+            }
+            bgBuffer.drawString("X", x-textXAdjust, y+textYAdjust);
+        }
+    }
 
   }
 
@@ -972,7 +1040,9 @@ public class Canvas extends JPanel implements ComponentListener,
           TrafficSignalRequestHandler requestHandler =
               (TrafficSignalRequestHandler) basePolicy.getRequestHandler();
           for (Lane entryLane : im.getIntersection().getEntryLanes()) {
-            switch (requestHandler.getSignal(entryLane.getId())) {
+              //this is an inheritance sin, but, ¯\_(ツ)_/¯
+              TrafficSignal ts = (SimConfig.signalType == SIGNAL_TYPE.FULLY_ACTUATED ? ((ApproxNPhasesTrafficSignalRequestHandler)requestHandler).getSignalForGUI(entryLane.getId()) : requestHandler.getSignal(entryLane.getId()));
+            switch (ts) {
             case GREEN:
               buffer.setPaint(Color.GREEN);
               break;

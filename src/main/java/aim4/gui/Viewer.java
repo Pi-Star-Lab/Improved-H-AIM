@@ -60,6 +60,7 @@ import javax.swing.JPanel;
 import aim4.config.Constants;
 import aim4.config.Debug;
 import aim4.config.SimConfig;
+import aim4.gui.frame.signalvisualization.SignalVisualizationWindow;
 import aim4.gui.frame.VehicleInfoFrame;
 import aim4.im.IntersectionManager;
 import aim4.map.Road;
@@ -109,6 +110,7 @@ public class Viewer extends JFrame implements ActionListener, KeyListener,
    * possible.
    */
   public static final double DEFAULT_SIM_SPEED = 3.0;
+
   /**
    * The number of screen updates per GUI second. If it is larger than or
    * equal to SimConfig.CYCLES_PER_SECOND, the screen will be updated at
@@ -416,6 +418,8 @@ public class Viewer extends JFrame implements ActionListener, KeyListener,
   private JButton stepButton;
   /** The frame for showing a vehicle information */
   private VehicleInfoFrame vehicleInfoFrame;
+    /** The frame for showing a signal information */
+  private SignalVisualizationWindow signalVisualizationFrame;
   // Menu Items
   /** Menu item "Autonomous Vehicles Only" */
   // private JCheckBoxMenuItem autoOnlySimTypeMenuItem;
@@ -1052,13 +1056,16 @@ public class Viewer extends JFrame implements ActionListener, KeyListener,
   private void runSimulationStep() {
     Debug.clearShortTermDebugPoints();
     SimStepResult simStepResult = sim.step(SimConfig.TIME_STEP);
-
     if (simStepResult instanceof AutoDriverOnlySimStepResult) {
       AutoDriverOnlySimStepResult simStepResult2 =
           (AutoDriverOnlySimStepResult) simStepResult;
       for (int vin : simStepResult2.getCompletedVINs()) {
         Debug.removeVehicleColor(vin);
       }
+    }
+    if (signalVisualizationFrame != null) {
+        signalVisualizationFrame.updateCurrentPhaseSegmentDepictions();
+        signalVisualizationFrame.repaint();
     }
   }
 
@@ -1304,8 +1311,24 @@ public class Viewer extends JFrame implements ActionListener, KeyListener,
           if (im.getIntersection().getArea().contains(leftClickPoint)) {
             if (Debug.getTargetIMid() != im.getId()) {
               Debug.setTargetIMid(im.getId());
+              
+              if (im.getRingAndBarrier() != null) {
+                if (signalVisualizationFrame == null) {
+                  signalVisualizationFrame = new SignalVisualizationWindow(this, 30f);
+                  signalVisualizationFrame.setDefaultCloseOperation(JFrame.DISPOSE_ON_CLOSE);
+                }
+                if (!signalVisualizationFrame.isVisible()) {
+                  signalVisualizationFrame.setVisible(true);
+                  this.requestFocusInWindow();
+                  this.requestFocus();
+                }
+                signalVisualizationFrame.setRingAndBarrier(im.getRingAndBarrier());
+              }
             } else {
               Debug.removeTargetIMid();
+              if (signalVisualizationFrame != null) {
+                  signalVisualizationFrame.setRingAndBarrier(null);
+              }
             }
             canvas.cleanUp();  // TODO: ugly code, one more reason to move this
             // function to canvas
@@ -1319,6 +1342,9 @@ public class Viewer extends JFrame implements ActionListener, KeyListener,
           vehicleInfoFrame.setVehicle(null);
         }
         Debug.removeTargetIMid();
+        if (signalVisualizationFrame != null) {
+          signalVisualizationFrame.setRingAndBarrier(null);
+        }
         canvas.cleanUp();
         canvas.update();
       }

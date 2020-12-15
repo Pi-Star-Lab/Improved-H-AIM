@@ -51,6 +51,7 @@ public interface Simulator {
    *
    * @param timeStep  the amount of time the simulation should run in
    *                  this time step
+     * @return 
    */
   SimStepResult step(double timeStep);
 
@@ -124,6 +125,17 @@ public interface Simulator {
    * @return number of vehicles generated
    */
   int getGeneratedVehiclesNum();
+  
+  /**
+   * Useful for simulations using assets that preschedule vehicles (from a file on traffic data, for instance).
+   * @return Number of vehicles that have been scheduled and not spawned if vehicles are scheduled. If no scheduler is used, should return -1.
+   */
+  int getScheduledVehiclesRemaining();
+  /**
+   * 
+   * @return The total number of vehicles that have been scheduled. If no scheduler is used, should return -1.
+   */
+  int getTotalScheduledVehicles();
   
   double getAvgTravelTime();
   double getTimeSTD();

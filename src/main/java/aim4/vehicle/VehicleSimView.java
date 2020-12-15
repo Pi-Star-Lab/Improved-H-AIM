@@ -27,9 +27,10 @@ SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
 CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
 OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-*/
+ */
 package aim4.vehicle;
 
+import aim4.config.SimConfig;
 import java.awt.Shape;
 import java.awt.geom.Line2D;
 import java.awt.geom.Point2D;
@@ -229,7 +230,7 @@ public interface VehicleSimView extends VehicleDriverView {
    * Tell this vehicle he has been stop
    */
 	void askedToStop();
-	
+
 	/**
 	 * Whether this vehicle is asked to stop.
 	 * @return
@@ -237,4 +238,5 @@ public interface VehicleSimView extends VehicleDriverView {
 	boolean hasStopped();
 
     public double getSpawnTime();
+
 }

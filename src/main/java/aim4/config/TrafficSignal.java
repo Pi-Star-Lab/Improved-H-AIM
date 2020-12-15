@@ -34,5 +34,5 @@ package aim4.config;
  * The traffic signals.
  */
 public enum TrafficSignal {
-  GREEN, YELLOW, RED
+  GREEN, YELLOW, RED, UNKNOWN, UNKNOWN_CONTAINING_GREEN, UNKNOWN_CONTAINING_GREEN_AND_YELLOW, UNKNOWN_CONTAINING_YELLOW
 }

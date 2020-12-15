@@ -27,9 +27,10 @@ SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
 CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
 OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-*/
+ */
 package aim4.driver.navigator;
 
+import aim4.config.SimConfig;
 import aim4.driver.AutoDriver;
 import aim4.im.IntersectionManager;
 import aim4.map.Road;
@@ -40,22 +41,22 @@ import aim4.map.Road;
  */
 public interface Navigator {
 
-  /////////////////////////////////
-  // PUBLIC METHODS
-  /////////////////////////////////
-
-  /**
-   * Given the current Road, the IntersectionManager being approached, and
-   * a destination Road, find a road that leave the IntersectionManager that
-   * will lead to the destination Road.
-   *
-   * @param current     the Road on which the vehicle is currently traveling
-   * @param im          the IntersectionManager the vehicle is approaching
-   * @param destination the Road on which the vehicle would ultimately like to
-   *                    end up
-   * @return            a road to take out of the intersection governed by
-   *                    the given IntersectionManager
-   */
-  Road navigate(Road current, IntersectionManager im, Road destination);
+    /////////////////////////////////
+    // PUBLIC METHODS
+    /////////////////////////////////
+    /**
+     * Given the current Road, the IntersectionManager being approached, and a
+     * destination Road, find a road that leave the IntersectionManager that
+     * will lead to the destination Road.
+     *
+     * @param current the Road on which the vehicle is currently traveling
+     * @param im the IntersectionManager the vehicle is approaching
+     * @param destination the Road on which the vehicle would ultimately like to
+     * end up
+     * @param vType Vehicle type for which to navigate.
+     * @return a road to take out of the intersection governed by the given
+     * IntersectionManager
+     */
+    Road navigate(Road current, IntersectionManager im, Road destination, SimConfig.VEHICLE_TYPE vType);
 
 }

@@ -265,6 +265,30 @@ public interface AutoVehicleDriverView extends VehicleDriverView {
    * @param msg the message to send to another Vehicle
    */
   void receive(I2VMessage msg);
+  
+  /**
+   * Check if LRF sensing is disabled.
+   * 
+   * @return True if sensing is disabled, false otherwise.
+   * @see    LRFMode
+   */
+  boolean isLRFDisabled();
+  
+  /**
+   * Check if LRF sensing mode is limited.
+   * 
+   * @return True if sensing mode is limited, false otherwise.
+   * @see    LRFMode
+   */
+  boolean isLRFLimited();
+  
+  /**
+   * Check if LRF sensing is fully enabled.
+   * 
+   * @return True if sensing is fully enabled, false otherwise.
+   * @see    LRFMode
+   */
+  boolean isLRFFullyEnabled();
 
   /////////////////////////////////
   // PUBLIC METHODS
@@ -278,6 +302,5 @@ public interface AutoVehicleDriverView extends VehicleDriverView {
    * @return the last V2I message
    */
   V2IMessage getLastV2IMessage();
-
 
 }

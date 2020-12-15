@@ -66,7 +66,7 @@ public abstract class LaneTrafficController {
 		 * @return a SpawnCase object. empty if nothing generated.
 		 */
 		public SpawnCase getSpawnVehicle() {
-			double rand = Util.random.nextDouble();
+			double rand = Util.RANDOM_NUM_GEN.nextDouble();
 			
 			if (rand < autoPercent) {
 				return new SpawnCase(VEHICLE_TYPE.AUTO);

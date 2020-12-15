@@ -44,6 +44,7 @@ import java.util.Set;
 
 import aim4.config.Constants;
 import aim4.config.Debug;
+import aim4.config.Resources;
 import aim4.config.SimConfig;
 import aim4.config.SimConfig.VEHICLE_TYPE;
 import aim4.driver.CrashTestDummy;
@@ -67,7 +68,7 @@ import expr.trb.DesignatedLanesExpr;
 public class ReservationGridManager implements
         ReservationManager<ReservationGridManager.Query, ReservationGridManager.Plan, Integer> {
 
-  /////////////////////////////////
+    /////////////////////////////////
     // NESTED CLASSES
     /////////////////////////////////
     /**
@@ -455,7 +456,7 @@ public class ReservationGridManager implements
         public void collect(ReservationGridManager manager) {
             Set<Integer> s
                     = manager.reservationGrid
-                    .getVinOfReservedTilesAtTime(manager.currentTime);
+                            .getVinOfReservedTilesAtTime(manager.currentTime);
             Set<Integer> lasts = null;
             if (vinHistoryTime.size() > 0) {
                 lasts = vinHistory.get(vinHistoryTime.get(vinHistoryTime.size() - 1));
@@ -483,10 +484,10 @@ public class ReservationGridManager implements
 
     }
 
-  /////////////////////////////////
+    /////////////////////////////////
     // PRIVATE FIELDS
     /////////////////////////////////
-  // TODO: replace config with other things
+    // TODO: replace config with other things
     /**
      * The configuration of this reservation grid manager.
      */
@@ -533,7 +534,7 @@ public class ReservationGridManager implements
      */
     private StatCollector<ReservationGridManager> statCollector;
 
-  /////////////////////////////////
+    /////////////////////////////////
     // CONSTRUCTORS
     /////////////////////////////////
     /**
@@ -582,7 +583,7 @@ public class ReservationGridManager implements
         this.statCollector = new VinHistoryStatCollector();
     }
 
-  /////////////////////////////////
+    /////////////////////////////////
     // PUBLIC METHODS
     /////////////////////////////////
     /**
@@ -625,7 +626,7 @@ public class ReservationGridManager implements
         return statCollector;
     }
 
-  /////////////////////////////////
+    /////////////////////////////////
     // PUBLIC METHODS
     /////////////////////////////////
     /**
@@ -659,7 +660,7 @@ public class ReservationGridManager implements
         // Create a dummy driver to steer it
         Driver dummy = new CrashTestDummy(testVehicle, arrivalLane, departureLane);
 
-    // assign the drive to the vehicle
+        // assign the drive to the vehicle
         // testVehicle.setDriver(dummy);  // TODO fix this later.
         // Keep track of the TileTimes that will make up this reservation
         FindTileTimesBySimulationResult fResult = null;
@@ -697,7 +698,7 @@ public class ReservationGridManager implements
      */
     @Override
     public Integer accept(Plan plan) {
-        boolean b = reservationGrid.reserve(plan.getVin(), plan.getWorkingList());
+        boolean b = reservationGrid.reserve(plan.getVin(), plan.getWorkingList(), reservationGrid.calcDiscreteTime(currentTime));
         assert b;
         return plan.getVin();
     }
@@ -710,7 +711,7 @@ public class ReservationGridManager implements
         reservationGrid.cancel(reservationId);  // reservationId == vin
     }
 
-  /////////////////////////////////
+    /////////////////////////////////
     // PRIVATE FIELDS
     /////////////////////////////////
     /**
@@ -828,7 +829,7 @@ public class ReservationGridManager implements
                     boolean accelerating) {
         // The area of the intersection
         Area areaPlus = intersection.getAreaPlus();
-    // The following must be true because the test vehicle
+        // The following must be true because the test vehicle
         // starts at the entry point of the intersection.
         assert areaPlus.contains(testVehicle.getPointAtMiddleFront(
                 Constants.DOUBLE_EQUAL_PRECISION));
@@ -838,7 +839,7 @@ public class ReservationGridManager implements
         // for occupation estimate
         List<Tile> occupied = null;
 
-    // A discrete representation of the time throughout the internal simulation
+        // A discrete representation of the time throughout the internal simulation
         // Notice that currentIntTime != arrivalTime
         int currentIntTime = reservationGrid.calcDiscreteTime(arrivalTime);
         // The duration in the current time interval
@@ -851,14 +852,14 @@ public class ReservationGridManager implements
             // Find out which tiles are occupied by the vehicle
             currentIntTime++;  // Record that we've moved forward one time step
 
-      // if it's not human driver, we should simulate its position
+            // if it's not human driver, we should simulate its position
             // otherwise, use the occupied in argument
             occupied = tiledArea.findOccupiedTiles(testVehicle.getShape(staticBufferSize));
 
             // Make sure none of these tiles are reserved by someone else already
             for (Tile tile : occupied) {
 
-        // Figure out how large of a time buffer to use, based on whether or
+                // Figure out how large of a time buffer to use, based on whether or
                 // not this is an edge tile
                 int buffer;
                 double expand = 1;
@@ -902,7 +903,7 @@ public class ReservationGridManager implements
         }
         return new FindTileTimesBySimulationResult(workingList,
                 reservationGrid
-                .calcTime(currentIntTime));
+                        .calcTime(currentIntTime));
     }
 
     /**
@@ -981,7 +982,7 @@ public class ReservationGridManager implements
         return accelerationProfile;
     }
 
-  /////////////////////////////////
+    /////////////////////////////////
     // DEBUG
     /////////////////////////////////
     /**

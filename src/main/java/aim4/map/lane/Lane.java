@@ -30,6 +30,8 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 package aim4.map.lane;
 
+import aim4.map.Road;
+import aim4.map.SpawnPoint;
 import java.awt.geom.Line2D;
 import java.awt.geom.Point2D;
 import java.awt.Shape;
@@ -56,8 +58,6 @@ public interface Lane {
   int getId();
   
   int getNumberOfCarsOnLane(int segment);
-  
-  SpawnPoint getSpawnPoint();
   
   void enter(int segment);
   
@@ -431,6 +431,25 @@ public interface Lane {
    *          this Lane, or <code>null</code> if it doesn't intersect
    */
   Point2D rightIntersectionPoint(Line2D l);
+
+  //todo: decouple this by letting an intermediary object map these together?
+  /**
+   * Gets the road containing this lane.
+     * @return Returns the road containing this lane.
+   */
+  Road getContainingRoad();
+  
+  /**
+   * Registers SpawnPoint with lane.
+     * @param sp SpawnPoint to permanently associate with the lane.
+   */
+  void registerSpawnPoint(SpawnPoint sp);
+  
+  /**
+   * Gets the SpawnPoint associated with this lane.
+     * @return SpawnPoint associated with this lane. <code>null</code> if none.
+   */
+  SpawnPoint getSpawnPoint();
   
   /**
    * Get the index of this lane in the given road

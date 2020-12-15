@@ -30,6 +30,7 @@
  */
 package aim4.map;
 
+import aim4.config.Constants.TurnDirection;
 import java.awt.geom.Line2D;
 import java.awt.geom.Point2D;
 import java.util.ArrayList;
@@ -37,7 +38,6 @@ import java.util.HashMap;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
-
 import aim4.config.Debug;
 import aim4.config.OneLaneTimeConfig;
 import aim4.config.Platoon;
@@ -47,14 +47,18 @@ import aim4.config.RevisedPhaseConfig;
 import aim4.config.SimConfig;
 import aim4.config.SimConfig.SIGNAL_TYPE;
 import aim4.config.SimConfig.VEHICLE_TYPE;
-import aim4.config.TrafficSignalPhase;
+import aim4.config.ringbarrier.RingAndBarrier;
+import aim4.config.ringbarrier.RingAndBarrierFactory;
 import aim4.im.DedicatedTrafficController;
+import aim4.im.Intersection;
+import aim4.im.IntersectionManager;
 import aim4.im.LaneTrafficController;
 import aim4.im.LaneTrafficController.LaneInfo;
 import aim4.im.LaneTrafficController.SpawnCase;
 import aim4.im.NormalTrafficController;
 import aim4.im.RoadBasedIntersection;
 import aim4.im.RoadBasedTrackModel;
+import aim4.im.intersectionarch.ArchIntersection;
 import aim4.im.v2i.RequestHandler.ApproxSimpleTrafficSignalRequestHandler;
 import aim4.im.v2i.V2IManager;
 import aim4.im.v2i.RequestHandler.ApproxNPhasesTrafficSignalRequestHandler.DedicatedLanesSignalController;
@@ -67,6 +71,7 @@ import aim4.im.v2i.RequestHandler.ApproxNPhasesTrafficSignalRequestHandler;
 import aim4.im.v2i.RequestHandler.ApproxNPhasesTrafficSignalRequestHandler.CyclicSignalController;
 import aim4.im.v2i.RequestHandler.BatchModeRequestHandler;
 import aim4.im.v2i.RequestHandler.FCFSRequestHandler;
+import aim4.im.v2i.RequestHandler.FullyActuatedSignalController;
 import aim4.im.v2i.RequestHandler.RequestHandler;
 import aim4.im.v2i.batch.RoadBasedReordering;
 import aim4.im.v2i.policy.BasePolicy;
@@ -74,15 +79,23 @@ import aim4.im.v2i.reservation.ReservationGridManager;
 import aim4.map.SpawnPoint.SpawnSpec;
 import aim4.map.SpawnPoint.SpawnSpecGenerator;
 import aim4.map.destination.DestinationSelector;
+import aim4.map.destination.FileBasedDestinationSelector;
 import aim4.map.destination.RandomDestinationSelector;
 import aim4.map.destination.TurnBasedDestinationSelector;
+import aim4.map.intersectionboard.DifferingLanesPerRoadBoard;
+import aim4.map.intersectionboard.IntersectionBoard;
+import aim4.map.intersectionboard.StandardIntersectionBoard;
 import aim4.map.lane.Lane;
+import aim4.map.lane.LaneIM;
+import aim4.map.trafficbyturns.DestinationFileSpawnSpecGenerator;
+import aim4.map.trafficbyturns.LaneRestrictedFileSpawnSpecGenerator;
+import aim4.map.trafficbyturns.TrafficFlowReaderFactory;
+import aim4.map.trafficbyturns.TurnMovements;
 import aim4.sim.setup.AdaptiveTrafficSignalSuperviser;
 import aim4.util.Util;
 import aim4.vehicle.VehicleSpec;
 import aim4.vehicle.VehicleSpecDatabase;
-import expr.trb.DesignatedLanesExpr;
-import expr.trb.TrafficSignalExpr;
+import java.io.File;
 
 /**
  * The utility class for GridMap.
@@ -90,182 +103,37 @@ import expr.trb.TrafficSignalExpr;
 public class GridMapUtil {
 
     private static IntersectionBoard roadBoard = null;
+    private static double currentTrafficLevel;
 
     /////////////////////////////////
     // NESTED CLASSES
     /////////////////////////////////
     /**
-     * Make each entrance of the lane as a point on the board, so we can know
-     * whether two path would intersect.
-     *
-     *
-     *
-     * @author menie
-     *
-     */
-    interface IntersectionBoard {
-
-        /**
-         * whether two lanes intersect
-         *
-         * @param firstLaneIn
-         * @param firstLaneOut
-         * @param secondLaneIn
-         * @param secondlaneOut
-         * @return
-         */
-        boolean intersects(int firstLaneIn, int firstLaneOut, int secondLaneIn, int secondlaneOut);
-    }
-
-    /**
-     * For example, lane 1 -> lane 1, lane 9 -> lane 3, corresponding to (5, 0)
-     * -> (5, 7), (7, 4) -> (3, 0). Intersect!
-     *
-     * @author menie
-     */
-    static class StantardIntersectionBoard implements IntersectionBoard {
-
-        /**
-         * map from laneId to its corresponding point on board
-         */
-        private Map<Integer, Point2D> laneInSet, laneOutSet;
-
-        /**
-         * Constructor.
-         */
-        public StantardIntersectionBoard() {
-
-            laneInSet = new HashMap<Integer, Point2D>();
-            laneOutSet = new HashMap<Integer, Point2D>();
-            int lnCount = DesignatedLanesExpr.NUMBER_OF_LANES;
-            int limit = lnCount * 2 + 1;
-
-            // for lane in
-            int y = lnCount + 1;
-            for (int i = 0; i < lnCount; i++) {
-                //            laneInSet.put(0, new Point2D.Double(4, 0));
-                //            laneInSet.put(1, new Point2D.Double(5, 0));
-                //            laneInSet.put(2, new Point2D.Double(6, 0));
-                laneInSet.put(i, new Point2D.Double(y + i, 0));
-            }
-
-            y = lnCount;
-            int iLane = lnCount;
-            for (int i = 0; i < lnCount; i++) {
-//            laneInSet.put(3, new Point2D.Double(3, 7));
-//            laneInSet.put(4, new Point2D.Double(2, 7));
-//            laneInSet.put(5, new Point2D.Double(1, 7));
-
-                laneInSet.put(iLane + i, new Point2D.Double(y - i, limit));
-            }
-
-            y = lnCount;
-            iLane = lnCount * 2;
-            for (int i = 0; i < lnCount; i++) {
-//            laneInSet.put(6, new Point2D.Double(0, 3));
-//            laneInSet.put(7, new Point2D.Double(0, 2));
-//            laneInSet.put(8, new Point2D.Double(0, 1));
-
-                laneInSet.put(iLane + i, new Point2D.Double(0, y - i));
-            }
-
-            y = lnCount + 1;
-            iLane = lnCount * 3;
-            for (int i = 0; i < lnCount; i++) {
-//            laneInSet.put(9, new Point2D.Double(7, 4));
-//            laneInSet.put(10, new Point2D.Double(7, 5));
-//            laneInSet.put(11, new Point2D.Double(7, 6));
-
-                laneInSet.put(iLane + i, new Point2D.Double(limit, y + i));
-            }
-
-            // for lane out
-            y = lnCount + 1;
-            for (int i = 0; i < lnCount; i++) {
-//            laneOutSet.put(0, new Point2D.Double(4, 7));
-//            laneOutSet.put(1, new Point2D.Double(5, 7));
-//            laneOutSet.put(2, new Point2D.Double(6, 7));
-
-                laneOutSet.put(i, new Point2D.Double(y + i, limit));
-            }
-
-            y = lnCount;
-            iLane = lnCount;
-            for (int i = 0; i < lnCount; i++) {
-//            laneOutSet.put(3, new Point2D.Double(3, 0));
-//            laneOutSet.put(4, new Point2D.Double(2, 0));
-//            laneOutSet.put(5, new Point2D.Double(1, 0));
-
-                laneOutSet.put(iLane + i, new Point2D.Double(y - i, 0));
-            }
-
-            y = lnCount;
-            iLane = lnCount * 2;
-            for (int i = 0; i < lnCount; i++) {
-//            laneOutSet.put(6, new Point2D.Double(7, 3));
-//            laneOutSet.put(7, new Point2D.Double(7, 2));
-//            laneOutSet.put(8, new Point2D.Double(7, 1));
-
-                laneOutSet.put(iLane + i, new Point2D.Double(limit, y - i));
-            }
-
-            y = lnCount + 1;
-            iLane = lnCount * 3;
-            for (int i = 0; i < lnCount; i++) {
-//            laneOutSet.put(9, new Point2D.Double(0, 4));
-//            laneOutSet.put(10, new Point2D.Double(0, 5));
-//            laneOutSet.put(11, new Point2D.Double(0, 6));
-
-                laneOutSet.put(iLane + i, new Point2D.Double(0, y + i));
-            }
-        }
-
-        @Override
-        public boolean intersects(int firstLaneIn, int firstLaneOut,
-                int secondLaneIn, int secondLaneOut) {
-            // TODO Auto-generated method stub
-            Point2D firstLaneInPoint = laneInSet.get(firstLaneIn);
-            Point2D firstLaneOutPoint = laneOutSet.get(firstLaneOut);
-            Point2D secondLaneInPoint = laneInSet.get(secondLaneIn);
-            Point2D secondLaneOutPoint = laneOutSet.get(secondLaneOut);
-
-            if (secondLaneInPoint == null) {
-                System.out.print("null pointer");
-            }
-
-            // check whether they intersect
-            return Line2D.linesIntersect(firstLaneInPoint.getX(),
-                    firstLaneInPoint.getY(),
-                    firstLaneOutPoint.getX(),
-                    firstLaneOutPoint.getY(),
-                    secondLaneInPoint.getX(),
-                    secondLaneInPoint.getY(),
-                    secondLaneOutPoint.getX(),
-                    secondLaneOutPoint.getY());
-        }
-    }
-
-    /**
      * The null spawn spec generator that generates nothing.
      */
     public static SpawnSpecGenerator nullSpawnSpecGenerator
             = new SpawnSpecGenerator() {
-                @Override
-                public List<SpawnSpec> act(SpawnPoint spawnPoint, double timeStep) {
-                    return new ArrayList<SpawnSpec>();
-                }
+        @Override
+        public List<SpawnSpec> act(SpawnPoint spawnPoint, double timeStep) {
+            return new ArrayList<SpawnSpec>();
+        }
 
-                @Override
-                public void vehicleGenerated() {
-                    // TODO Auto-generated method stub
+        @Override
+        public void vehicleGenerated() {
+            // TODO Auto-generated method stub
 
-                }
+        }
 
         @Override
         public SpawnSpec act(SpawnPoint spawnPoint, double timeStep, VEHICLE_TYPE vehicleType, Road destinationRoad) {
             throw new UnsupportedOperationException("Not supported yet."); //To change body of generated methods, choose Tools | Templates.
         }
-            };
+
+        @Override
+        public List<SpawnSpec> act(SpawnPoint spawnPoint, double timeStep, VEHICLE_TYPE vehicleType) {
+            throw new UnsupportedOperationException("Not supported yet."); //To change body of generated methods, choose Tools | Templates.
+        }
+    };
 
     /**
      * The uniform distributed spawn spec generator.
@@ -329,6 +197,11 @@ public class GridMapUtil {
             this.laneInfo = laneInfo;
         }
 
+        @Override
+        public List<SpawnSpec> act(SpawnPoint spawnPoint, double timeStep, VEHICLE_TYPE vehicleType) {
+            throw new UnsupportedOperationException("Not supported yet."); //To change body of generated methods, choose Tools | Templates.
+        }
+
         /**
          * {@inheritDoc}
          */
@@ -374,7 +247,7 @@ public class GridMapUtil {
                         if (Platoon.platooning) {
                             // for example, if we group 5 human vehicles at one time
                             // we divide the spawning possibility by 5.
-                            if (Util.random.nextDouble() < 1.0 / Platoon.vehiclesNumExpection) {
+                            if (Util.RANDOM_NUM_GEN.nextDouble() < 1.0 / Platoon.vehiclesNumExpection) {
                                 // okay, we generate this vehicle here, but we need to generate more vehicles
                                 // when it's possible.
                                 vehiclesToBeGenerated += Platoon.vehiclesNumExpection - 1;
@@ -399,7 +272,6 @@ public class GridMapUtil {
 
         public SpawnSpec act(SpawnPoint spawnPoint, double timeStep, VEHICLE_TYPE vehicleType, Road destinationRoad) {
 
-
             SpawnCase spawnCase = new SpawnCase(vehicleType);
 
             int i = Util.randomIndex(proportion);
@@ -409,7 +281,7 @@ public class GridMapUtil {
                     vehicleSpec,
                     destinationRoad,
                     vehicleType);
-                   // }
+            // }
 
         }
 
@@ -472,7 +344,7 @@ public class GridMapUtil {
             double initTime = spawnPoint.getCurrentTime();
             for (double time = initTime; time < initTime + timeStep;
                     time += SimConfig.SPAWN_TIME_STEP) {
-                if (Util.random.nextDouble() < prob) {
+                if (Util.RANDOM_NUM_GEN.nextDouble() < prob) {
                     Road destinationRoad
                             = destinationSelector.selectDestination(spawnPoint.getLane());
 
@@ -494,6 +366,11 @@ public class GridMapUtil {
 
         @Override
         public SpawnSpec act(SpawnPoint spawnPoint, double timeStep, VEHICLE_TYPE vehicleType, Road destinationRoad) {
+            throw new UnsupportedOperationException("Not supported yet."); //To change body of generated methods, choose Tools | Templates.
+        }
+
+        @Override
+        public List<SpawnSpec> act(SpawnPoint spawnPoint, double timeStep, VEHICLE_TYPE vehicleType) {
             throw new UnsupportedOperationException("Not supported yet."); //To change body of generated methods, choose Tools | Templates.
         }
     }
@@ -554,6 +431,11 @@ public class GridMapUtil {
 
         @Override
         public SpawnSpec act(SpawnPoint spawnPoint, double timeStep, VEHICLE_TYPE vehicleType, Road destinationRoad) {
+            throw new UnsupportedOperationException("Not supported yet."); //To change body of generated methods, choose Tools | Templates.
+        }
+
+        @Override
+        public List<SpawnSpec> act(SpawnPoint spawnPoint, double timeStep, VEHICLE_TYPE vehicleType) {
             throw new UnsupportedOperationException("Not supported yet."); //To change body of generated methods, choose Tools | Templates.
         }
     }
@@ -645,9 +527,12 @@ public class GridMapUtil {
         public SpawnSpec act(SpawnPoint spawnPoint, double timeStep, VEHICLE_TYPE vehicleType, Road destinationRoad) {
             throw new UnsupportedOperationException("Not supported yet."); //To change body of generated methods, choose Tools | Templates.
         }
-    }
 
-    private static double currentTrafficLevel;
+        @Override
+        public List<SpawnSpec> act(SpawnPoint spawnPoint, double timeStep, VEHICLE_TYPE vehicleType) {
+            throw new UnsupportedOperationException("Not supported yet."); //To change body of generated methods, choose Tools | Templates.
+        }
+    }
 
     /////////////////////////////////
     // PUBLIC STATIC METHODS
@@ -656,10 +541,14 @@ public class GridMapUtil {
             int secondLaneIn, int secondLaneOut) {
         if (roadBoard == null) {
             // initialize this, if needed.
-            roadBoard = new StantardIntersectionBoard();
+            roadBoard = new StandardIntersectionBoard();
         }
 
         return roadBoard.intersects(firstLaneIn, firstLaneOut, secondLaneIn, secondLaneOut);
+    }
+
+    public static void createAndUseDifferingLanesPerRoadBoard(Intersection inter) {
+        roadBoard = new DifferingLanesPerRoadBoard(inter);
     }
 
     /**
@@ -668,23 +557,36 @@ public class GridMapUtil {
      * @param layout the map
      * @param currentTime the current time
      * @param config the reservation grid manager configuration
+     * @param interArch object containing information about the architecture and
+     * turning policies for an intersection
      */
     public static void setFCFSManagers(GridMap layout,
             double currentTime,
-            ReservationGridManager.Config config) {
+            ReservationGridManager.Config config, ArchIntersection interArch) {
         layout.removeAllManagers();
+        Intersection inter = null;
         for (int column = 0; column < layout.getColumns(); column++) {
             for (int row = 0; row < layout.getRows(); row++) {
                 List<Road> roads = layout.getRoads(column, row);
                 RoadBasedIntersection intersection = new RoadBasedIntersection(roads);
+                inter = intersection;
                 RoadBasedTrackModel trajectoryModel
                         = new RoadBasedTrackModel(intersection);
                 V2IManager im
                         = new V2IManager(intersection, trajectoryModel, currentTime,
                                 config, layout.getImRegistry());
+                intersection.registerIntersectionManager(im);
+                for (Road road : im.getIntersection().getRoads()) {
+                    for (Lane lane : road.getLanes()) {
+                        setPolicyAndExitRestictionsForLane(lane, im, interArch);
+                    }
+                }
                 im.setPolicy(new BasePolicy(im, new FCFSRequestHandler()));
                 layout.setManager(column, row, im);
             }
+        }
+        if (layout.getColumns() == layout.getRows() && layout.getColumns() == 1 && inter != null) {
+            createAndUseDifferingLanesPerRoadBoard(inter);
         }
     }
 
@@ -695,21 +597,31 @@ public class GridMapUtil {
      * @param currentTime the current time
      * @param config the reservation grid manager configuration
      * @param processingInterval the processing interval
+     * @param interArch object containing information about the architecture and
+     * turning policies for an intersection
      */
     public static void setBatchManagers(GridMap layout,
             double currentTime,
             ReservationGridManager.Config config,
-            double processingInterval) {
+            double processingInterval, ArchIntersection interArch) {
         layout.removeAllManagers();
+        Intersection inter = null;
         for (int column = 0; column < layout.getColumns(); column++) {
             for (int row = 0; row < layout.getRows(); row++) {
                 List<Road> roads = layout.getRoads(column, row);
                 RoadBasedIntersection intersection = new RoadBasedIntersection(roads);
+                inter = intersection;
                 RoadBasedTrackModel trajectoryModel
                         = new RoadBasedTrackModel(intersection);
                 V2IManager im
                         = new V2IManager(intersection, trajectoryModel, currentTime,
                                 config, layout.getImRegistry());
+                intersection.registerIntersectionManager(im);
+                for (Road road : im.getIntersection().getRoads()) {
+                    for (Lane lane : road.getLanes()) {
+                        setPolicyAndExitRestictionsForLane(lane, im, interArch);
+                    }
+                }
                 RequestHandler rh
                         = new BatchModeRequestHandler(
                                 new RoadBasedReordering(processingInterval),
@@ -717,6 +629,9 @@ public class GridMapUtil {
                 im.setPolicy(new BasePolicy(im, rh));
                 layout.setManager(column, row, im);
             }
+        }
+        if (layout.getColumns() == layout.getRows() && layout.getColumns() == 1 && inter != null) {
+            createAndUseDifferingLanesPerRoadBoard(inter);
         }
     }
 
@@ -728,30 +643,43 @@ public class GridMapUtil {
      * @param config the reservation grid manager configuration
      * @param greenLightDuration the green light duration
      * @param yellowLightDuration the yellow light duration
+     * @param interArch object containing information about the architecture and
+     * turning policies for an intersection
      */
     public static void setApproxSimpleTrafficLightManagers(
             GridMap layout,
             double currentTime,
             ReservationGridManager.Config config,
             double greenLightDuration,
-            double yellowLightDuration) {
+            double yellowLightDuration, ArchIntersection interArch) {
 
         layout.removeAllManagers();
+        Intersection inter = null;
         for (int column = 0; column < layout.getColumns(); column++) {
             for (int row = 0; row < layout.getRows(); row++) {
                 List<Road> roads = layout.getRoads(column, row);
                 RoadBasedIntersection intersection = new RoadBasedIntersection(roads);
+                inter = intersection;
                 RoadBasedTrackModel trajectoryModel
                         = new RoadBasedTrackModel(intersection);
                 V2IManager im
                         = new V2IManager(intersection, trajectoryModel, currentTime,
                                 config, layout.getImRegistry());
+                intersection.registerIntersectionManager(im);
+                for (Road road : im.getIntersection().getRoads()) {
+                    for (Lane lane : road.getLanes()) {
+                        setPolicyAndExitRestictionsForLane(lane, im, interArch);
+                    }
+                }
                 ApproxSimpleTrafficSignalRequestHandler requestHandler
                         = new ApproxSimpleTrafficSignalRequestHandler(greenLightDuration,
                                 yellowLightDuration);
                 im.setPolicy(new BasePolicy(im, requestHandler));
                 layout.setManager(column, row, im);
             }
+        }
+        if (layout.getColumns() == layout.getRows() && layout.getColumns() == 1 && inter != null) {
+            createAndUseDifferingLanesPerRoadBoard(inter);
         }
     }
 
@@ -763,29 +691,42 @@ public class GridMapUtil {
      * @param config the reservation grid manager configuration
      * @param greenLightDuration the green light duration
      * @param yellowLightDuration the yellow light duration
+     * @param interArch object containing information about the architecture and
+     * turning policies for an intersection
      */
     public static void setApprox4PhasesTrafficLightManagers(
             GridMap layout,
             double currentTime,
             ReservationGridManager.Config config,
             double greenLightDuration,
-            double yellowLightDuration) {
+            double yellowLightDuration, ArchIntersection interArch) {
         layout.removeAllManagers();
+        Intersection inter = null;
         for (int column = 0; column < layout.getColumns(); column++) {
             for (int row = 0; row < layout.getRows(); row++) {
                 List<Road> roads = layout.getRoads(column, row);
                 RoadBasedIntersection intersection = new RoadBasedIntersection(roads);
+                inter = intersection;
                 RoadBasedTrackModel trajectoryModel
                         = new RoadBasedTrackModel(intersection);
                 V2IManager im
                         = new V2IManager(intersection, trajectoryModel, currentTime,
                                 config, layout.getImRegistry());
+                intersection.registerIntersectionManager(im);
+                for (Road road : im.getIntersection().getRoads()) {
+                    for (Lane lane : road.getLanes()) {
+                        setPolicyAndExitRestictionsForLane(lane, im, interArch);
+                    }
+                }
                 Approx4PhasesTrafficSignalRequestHandler requestHandler
                         = new Approx4PhasesTrafficSignalRequestHandler(greenLightDuration,
                                 yellowLightDuration);
                 im.setPolicy(new BasePolicy(im, requestHandler));
                 layout.setManager(column, row, im);
             }
+        }
+        if (layout.getColumns() == layout.getRows() && layout.getColumns() == 1 && inter != null) {
+            createAndUseDifferingLanesPerRoadBoard(inter);
         }
     }
 
@@ -797,40 +738,51 @@ public class GridMapUtil {
      * @param config the reservation grid manager configuration
      * @param trafficSignalPhaseFileName the name of the file contains the
      * traffic signals duration information
+     * @param interArch object containing information about the architecture and
+     * turning policies for an intersection
      */
     public static void setApproxNPhasesTrafficLightManagers(
             GridMap layout,
             double currentTime,
             ReservationGridManager.Config config,
-            String trafficSignalPhaseFileName) {
+            String trafficSignalPhaseFileName, ArchIntersection interArch) {
 
         layout.removeAllManagers();
+        Intersection inter = null;
+        RingAndBarrier ringAndBarrier = null;
+        if (layout.getColumns() > 0 && layout.getRows() > 0) {
+            ringAndBarrier = RingAndBarrierFactory.createRingAndBarrierFromFile(layout, trafficSignalPhaseFileName);
+            Resources.ringAndBarrier = ringAndBarrier;
+        }
+
         for (int column = 0; column < layout.getColumns(); column++) {
             for (int row = 0; row < layout.getRows(); row++) {
                 List<Road> roads = layout.getRoads(column, row);
                 RoadBasedIntersection intersection = new RoadBasedIntersection(roads);
+                inter = intersection;
                 RoadBasedTrackModel trajectoryModel
                         = new RoadBasedTrackModel(intersection);
                 V2IManager im
                         = new V2IManager(intersection, trajectoryModel, currentTime,
-                                config, layout.getImRegistry());
-                ApproxNPhasesTrafficSignalRequestHandler requestHandler
-                        = new ApproxNPhasesTrafficSignalRequestHandler();
-
-                TrafficSignalPhase phase
-                        = TrafficSignalPhase.makeFromFile(layout, trafficSignalPhaseFileName);
-
-                Resources.phase = phase;
+                                config, layout.getImRegistry(), ringAndBarrier);
+                intersection.registerIntersectionManager(im);
+                ApproxNPhasesTrafficSignalRequestHandler requestHandler;
+                if (interArch == null) {
+                    requestHandler = new ApproxNPhasesTrafficSignalRequestHandler(im);
+                } else {
+                    requestHandler = new ApproxNPhasesTrafficSignalRequestHandler(interArch.getMaxNumberOfLanes(), im);
+                }
 
                 for (Road road : im.getIntersection().getEntryRoads()) {
                     for (Lane lane : road.getLanes()) {
-                        if (SimConfig.signalType == SimConfig.SIGNAL_TYPE.RED_PHASE_ADAPTIVE) {
-                            RedPhaseData.readRedPhaseData();
-                            phase.resetRedDurations(RedPhaseData.defaultRedPhaseTime);
-
-                            CyclicSignalController controller
-                                    = phase.calcCyclicSignalController(road);
+                        if (SimConfig.signalType == SimConfig.SIGNAL_TYPE.FULLY_ACTUATED) {
+                            FullyActuatedSignalController controller
+                                    = new FullyActuatedSignalController(ringAndBarrier, lane, im.getIntersection().getIntersectionManager(), requestHandler);
                             requestHandler.setSignalControllers(lane.getId(), controller);
+                        } else if (SimConfig.signalType == SimConfig.SIGNAL_TYPE.RED_PHASE_ADAPTIVE) {
+                            RedPhaseData.readRedPhaseData();
+                            ringAndBarrier.LEGACY_resetRedDurations(RedPhaseData.defaultRedPhaseTime);
+                            requestHandler.setSignalControllers(lane.getId(), ringAndBarrier.LEGACY_calcCyclicSignalController(road));
                         } else if (SimConfig.signalType == SimConfig.SIGNAL_TYPE.ONE_LANE_VERSION) {
                             OneLaneSignalController controller
                                     = new OneLaneSignalController(lane.getId(), OneLaneTimeConfig.greenTime, OneLaneTimeConfig.redTime);
@@ -840,10 +792,8 @@ public class GridMapUtil {
                                     = RevisedPhaseConfig.getController(lane.getId());
                             requestHandler.setSignalControllers(lane.getId(), controller);
                         } else if (SimConfig.signalType == SimConfig.SIGNAL_TYPE.TRADITIONAL) {
-                            phase.resetRedDurations(SimConfig.RED_PHASE_LENGTH);
-                            CyclicSignalController controller
-                                    = phase.calcCyclicSignalController(road);
-                            requestHandler.setSignalControllers(lane.getId(), controller);
+                            ringAndBarrier.LEGACY_resetRedDurations(SimConfig.RED_PHASE_LENGTH);
+                            requestHandler.setSignalControllers(lane.getId(), ringAndBarrier.LEGACY_calcCyclicSignalController(road));
                         } else if (SimConfig.signalType == SIGNAL_TYPE.HUMAN_ADAPTIVE) {
                             SignalController controller = AdaptiveTrafficSignalSuperviser.addTrafficSignalController(lane);
                             requestHandler.setSignalControllers(lane.getId(), controller);
@@ -852,18 +802,24 @@ public class GridMapUtil {
                                     = new DedicatedLanesSignalController(lane.getId());
                             requestHandler.setSignalControllers(lane.getId(), controller);
                         } else {
-                            CyclicSignalController controller
-                                    = phase.calcCyclicSignalController(road);
-                            requestHandler.setSignalControllers(lane.getId(), controller);
+                            requestHandler.setSignalControllers(lane.getId(), ringAndBarrier.LEGACY_calcCyclicSignalController(road));
                         }
+                        setPolicyAndExitRestictionsForLane(lane, im, interArch);
                     }
                 }
 
                 im.setPolicy(new BasePolicy(im, requestHandler));
                 layout.setManager(column, row, im);
-
                 Resources.im = im;
+                if (SimConfig.signalType == SimConfig.SIGNAL_TYPE.FULLY_ACTUATED || Resources.ringAndBarrier != null) {
+                    if(!ringAndBarrier.bindPhaseSegmentsToIM()) {
+                        throw new RuntimeException("Couldn't bind IM to segments from the ring and barrier object.");
+                    }
+                }
             }
+        }
+        if (layout.getColumns() == layout.getRows() && layout.getColumns() == 1 && inter != null) {
+            createAndUseDifferingLanesPerRoadBoard(inter);
         }
     }
 
@@ -873,24 +829,67 @@ public class GridMapUtil {
      * @param layout the map
      * @param currentTime the current time
      * @param config the reservation grid manager configuration
+     * @param interArch object containing information about the architecture and
+     * turning policies for an intersection
      */
     public static void setApproxStopSignManagers(GridMap layout,
             double currentTime,
-            ReservationGridManager.Config config) {
+            ReservationGridManager.Config config, ArchIntersection interArch) {
         layout.removeAllManagers();
+        Intersection inter = null;
         for (int column = 0; column < layout.getColumns(); column++) {
             for (int row = 0; row < layout.getRows(); row++) {
                 List<Road> roads = layout.getRoads(column, row);
                 RoadBasedIntersection intersection = new RoadBasedIntersection(roads);
+                inter = intersection;
                 RoadBasedTrackModel trajectoryModel
                         = new RoadBasedTrackModel(intersection);
                 V2IManager im
                         = new V2IManager(intersection, trajectoryModel, currentTime,
                                 config, layout.getImRegistry());
+                intersection.registerIntersectionManager(im);
+                for (Road road : im.getIntersection().getRoads()) {
+                    for (Lane lane : road.getLanes()) {
+                        setPolicyAndExitRestictionsForLane(lane, im, interArch);
+                    }
+                }
                 ApproxStopSignRequestHandler requestHandler
                         = new ApproxStopSignRequestHandler();
                 im.setPolicy(new BasePolicy(im, requestHandler));
                 layout.setManager(column, row, im);
+            }
+        }
+        if (layout.getColumns() == layout.getRows() && layout.getColumns() == 1 && inter != null) {
+            createAndUseDifferingLanesPerRoadBoard(inter);
+        }
+    }
+
+    public static void setPolicyAndExitRestictionsForLane(Lane lane, V2IManager im, ArchIntersection interArch) {
+        if (interArch != null && lane != null && im != null) {
+            if (!interArch.isSetup()) {
+                interArch.tieIntersection(im.getIntersection());
+            }
+            LaneIM laIM = lane.getLaneIM(); //lane intersection manager relationship, NOT the im.
+            Iterable<TurnDirection> mappingKeys = interArch.getExitMappingKeys(lane);
+            if (mappingKeys != null) {
+                for (TurnDirection key : mappingKeys) {
+                    laIM.setExitLaneMapping(im, key, interArch.getExitLane(lane, key));
+                }
+            } else {
+                //if lane mappings weren't specified, set no outgoing lane allowed for the mapping
+                laIM.disallowAllOutgoingLaneMappings(im);
+            }
+
+            Iterable<VEHICLE_TYPE> vTypeKeys = interArch.getTurnPolicyKeys(lane);
+            if (vTypeKeys != null) {
+                for (VEHICLE_TYPE vType : vTypeKeys) {
+                    laIM.setValidActionsForLane(im, interArch.getAllowedTurns(lane, vType), vType);
+                }
+            } else {
+                //if actions weren't specified, set all actions disallowed for the lane
+                for (VEHICLE_TYPE vType : VEHICLE_TYPE.values()) {
+                    laIM.setValidActionsForLane(im, null, vType);
+                }
             }
         }
     }
@@ -907,6 +906,40 @@ public class GridMapUtil {
             sp.setVehicleSpecChooser(
                     new UniformSpawnSpecGenerator(trafficLevel,
                             new RandomDestinationSelector(map)));
+        }
+    }
+
+    /**
+     * Set Up File Destination spawn points
+     *
+     * @param map the map
+     * @param tms object encapsulating turn movements to use for spawning with
+     * the FileBasedSpawnSpecGenerator
+     */
+    public static void setSpawnDestSpawnPoints(BasicMap map,
+            TurnMovements tms) {
+
+        DestinationFileSpawnSpecGenerator destspecgen = TrafficFlowReaderFactory.getDestFileSpawnSpecGen(tms.getCountLists(), new FileBasedDestinationSelector(map.getImRegistry()));
+
+        for (SpawnPoint sp : map.getSpawnPoints()) {
+            sp.setVehicleSpecChooser(destspecgen);
+        }
+    }
+
+    /**
+     * Set Up Lane Restricted File Destination spawn points
+     *
+     * @param map the map
+     * @param tms object encapsulating turn movements to use for spawning with
+     * the FileBasedSpawnSpecGenerator
+     */
+    public static void setLaneRestrictedSpawnDestSpawnPoints(BasicMap map,
+            TurnMovements tms) {
+
+        LaneRestrictedFileSpawnSpecGenerator destspecgen = TrafficFlowReaderFactory.getLaneRestrDestFileSpawnSpecGen(tms.getCountLists(), new FileBasedDestinationSelector(map.getImRegistry()));
+
+        for (SpawnPoint sp : map.getSpawnPoints()) {
+            sp.setVehicleSpecChooser(destspecgen);
         }
     }
 

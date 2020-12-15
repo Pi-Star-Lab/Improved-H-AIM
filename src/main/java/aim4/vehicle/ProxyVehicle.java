@@ -392,13 +392,14 @@ public class ProxyVehicle extends BasicAutoVehicle
     double maxTurnVelocity = 7.5; // TODO: hard-code for now, need to fix it.
 
     List<Proposal> proposals = new LinkedList<Proposal>();
-    proposals.add(new Proposal(arrivalLane.getId(),
+    proposals.add(new Proposal(arrivalLane,
                                msg.departureLaneId,
                                msg.receivedTime + msg.arrivalTimeSpan
                                  + DEFAULT_ARRIVAL_TIME_DELAY,
                                movement.getVelocity(),
                                //msg.arrivalVelocity,
-                               maxTurnVelocity));
+                               maxTurnVelocity, 
+                                currentIM));
 
     System.err.printf("msg.arrivalVelocity = %.5f\n", msg.arrivalVelocity);
     System.err.printf("this.velocity       = %.5f\n\n", movement.getVelocity());

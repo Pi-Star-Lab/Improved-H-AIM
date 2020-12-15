@@ -61,6 +61,6 @@ public class UniformProportionalNoiseFunction implements NoiseFunction {
   @Override
   public double apply(double trueValue) {
     double range = 2 * trueValue * proportion;
-    return trueValue + (Util.random.nextDouble() * range) - range/2;
+    return trueValue + (Util.RANDOM_NUM_GEN.nextDouble() * range) - range/2;
   }
 }

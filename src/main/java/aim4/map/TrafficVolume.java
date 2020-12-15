@@ -240,7 +240,7 @@ public class TrafficVolume {
 		result.add("HEAD");
 		
 		// Generate random volumes for north and south
-		Random randomGenerater = new Random(); 
+		Random randomGenerater = Util.RANDOM_NUM_GEN; 
 		for (int roadCtr = 0; roadCtr < 2; roadCtr ++) {
 			// Only left lanes turn left 
 			data.add("Left," + randomGenerater.nextInt(100) + ",0,0");

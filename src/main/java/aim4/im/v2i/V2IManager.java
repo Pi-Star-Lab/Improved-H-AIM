@@ -40,6 +40,7 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 
 import aim4.config.Debug;
+import aim4.config.ringbarrier.RingAndBarrier;
 import aim4.im.Intersection;
 import aim4.im.IntersectionManager;
 import aim4.im.TrackModel;
@@ -72,7 +73,7 @@ public class V2IManager extends IntersectionManager
    * The maximum amount of time, in seconds, in the future, for which the
    * policy will accept reservation requests. {@value} seconds.
    */
-  public static final double MAXIMUM_FUTURE_RESERVATION_TIME = 10.0; // sec
+  //public static final double MAXIMUM_FUTURE_RESERVATION_TIME = 10.0; // sec
 
   /**
    * The default distance the IntersectionManager can transmit messages.
@@ -161,15 +162,17 @@ public class V2IManager extends IntersectionManager
    * @param trackModel    a path model of the intersection
    * @param currentTime   the current time
    * @param registry      an intersection manager registry
+   * @param ringAndBarrier ring and barrier for the signal for this intersection
    */
   public V2IManager(Intersection intersection,
                     TrackModel trackModel,
                     double currentTime,
                     ReservationGridManager.Config config,
-                    Registry<IntersectionManager> registry) {
+                    Registry<IntersectionManager> registry,
+                    RingAndBarrier ringAndBarrier) {
     // Use the superclass's constructor to set up all the physical
     // properties of the intersection
-    super(intersection, trackModel, currentTime, registry);
+    super(intersection, trackModel, currentTime, registry, ringAndBarrier);
     // Set up the reservation grid
     this.tiledArea = new TiledArea(intersection.getArea(),
                                    config.getGranularity());
@@ -187,6 +190,23 @@ public class V2IManager extends IntersectionManager
       aczs.put(l.getId(), acz);
       aczManagers.put(l.getId(), new AczManager(acz));
     }
+  }
+  
+    /**
+   * Construct a new V2IManager given the structure of Lanes in the
+   * intersection.
+   *
+   * @param intersection  an intersection
+   * @param trackModel    a path model of the intersection
+   * @param currentTime   the current time
+   * @param registry      an intersection manager registry
+   */
+  public V2IManager(Intersection intersection,
+                    TrackModel trackModel,
+                    double currentTime,
+                    ReservationGridManager.Config config,
+                    Registry<IntersectionManager> registry) {
+      this(intersection, trackModel, currentTime, config, registry, null);
   }
 
 
@@ -440,7 +460,6 @@ public class V2IManager extends IntersectionManager
     }
   }
 
-
   /////////////////////////////////
   // DEBUG
   /////////////////////////////////
@@ -486,5 +505,5 @@ public class V2IManager extends IntersectionManager
     return laneShapes;
   }
 
-
+  
 }

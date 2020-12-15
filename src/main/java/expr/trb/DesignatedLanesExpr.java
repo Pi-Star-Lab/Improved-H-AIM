@@ -5,6 +5,8 @@
  */
 package expr.trb;
 
+import aim4.config.Constants;
+import aim4.config.Constants.Direction;
 import aim4.config.Debug;
 import aim4.config.Platoon;
 import aim4.config.SimConfig;
@@ -14,7 +16,10 @@ import aim4.gui.Viewer;
 import aim4.map.BasicMap;
 import aim4.map.Road;
 import aim4.map.SpawnPoint;
+import aim4.map.actionmapping.ActionMappingFactory;
 import aim4.map.lane.Lane;
+import aim4.map.trafficbyturns.TrafficFlowReaderFactory;
+import aim4.map.trafficbyturns.TurnMovements;
 import aim4.vehicle.VehicleSimView;
 import aim4.vehicle.VinRegistry;
 import java.util.List;
@@ -22,6 +27,7 @@ import aim4.sim.AutoDriverOnlySimulator;
 import aim4.sim.Simulator;
 import aim4.sim.setup.ApproxNPhasesTrafficSignalSimSetup;
 import aim4.sim.setup.BasicSimSetup;
+import aim4.util.LimitedPairImplementation;
 import aim4.util.Registry;
 import aim4.util.Util;
 import static expr.trb.TrafficSignalExpr.AVrejects;
@@ -40,8 +46,14 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Paths;
 import java.nio.file.StandardOpenOption;
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
-import java.util.Random;
+import java.util.Collections;
+import java.util.EnumSet;
+import java.util.HashMap;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 
 /**
  *
@@ -49,18 +61,22 @@ import java.util.Random;
  */
 public class DesignatedLanesExpr {
 
-    public static boolean DESIGNATED_LANES = true;
+    public enum ExprType {
+        DESIGNATED_LANES, DESIGNATED_LANES_WITH_ARCH, OTHER
+    }
+    public static ExprType exprType = ExprType.DESIGNATED_LANES_WITH_ARCH;
     public static boolean STAY_IN_SAME_LANE = true;
     public static int NUMBER_OF_LANES = 3;
     public static int VEHICLES_LANE_HOUR = 300;
     public static double VEHICLES_ROAD_SECOND;
     public static double MAXIMAL_TIME_TO_FUTURE_RESERVATION = 6;
-    public static int SEED = 2017;
+    public static int SEED = 740357792;//2017;
     public static Registry<Lane> laneRegistry;
     public static int[][][] designated;
     public static double SPEED_LIMIT = 15;
     public static double SAFETY_BUFFER_SECONDS = 0.1;
     public static double SAFETY_BUFFER_METERS = 0.1;
+    public static double EXIT_TILE_SAFETY_BUFFER_SECONDS = 0.15;
 
     // T intesection parameters/////////
     public static boolean intersectionIsTypeT = false;
@@ -74,7 +90,7 @@ public class DesignatedLanesExpr {
     ////////////////////////////////////////////
 
     //Type proportion
-    public static double ratioAV = 0.8;
+    public static double ratioAV = 0.5;
     public static double ratioCC = 0;
     public static double ratioACC = 0;
     public static double ratioH;
@@ -92,23 +108,61 @@ public class DesignatedLanesExpr {
     public static double maxTravelTimeCC = 0;
     public static double maxTravelTimeACC = 0;
     //////////////////////////////
+    public static double timeMaxTravelHCompletion = -1;
+    public static double timeMaxTravelAVCompletion = -1;
+    public static double timeMaxTravelCCCompletion = -1;
+    public static double timeMaxTravelACCCompletion = -1;
 
     // Output near misses timing/////////
     public static boolean OBSERVE_NEAR_MISS = false;
     public static List<Double> nearMisses = new ArrayList<Double>();
     public static double MAX_MISS_MEASURE = 2.0;
 
+    // For output tracking purposes
+    //array lists by time slot, by direction (mapped with timingIndexMap)
+    public static ArrayList<ArrayList<ArrayList<Double>>> autoVehicleTimesByDirection = new ArrayList<ArrayList<ArrayList<Double>>>();
+    public static ArrayList<ArrayList<ArrayList<Double>>> humanVehicleTimesByDirection = new ArrayList<ArrayList<ArrayList<Double>>>();
+    public static ArrayList<ArrayList<ArrayList<Double>>> autoVehicleDelaysByDirection = new ArrayList<ArrayList<ArrayList<Double>>>();
+    public static ArrayList<ArrayList<ArrayList<Double>>> humanVehicleDelaysByDirection = new ArrayList<ArrayList<ArrayList<Double>>>();
+    public static ArrayList<ArrayList<ArrayList<Double>>> autoVehicleDelaysByDirectionNoInter = new ArrayList<ArrayList<ArrayList<Double>>>();
+    public static ArrayList<ArrayList<ArrayList<Double>>> humanVehicleDelaysByDirectionNoInter = new ArrayList<ArrayList<ArrayList<Double>>>();
+    public static ArrayList<ArrayList<ArrayList<Double>>> autoVehicleDelaysExcludingStops = new ArrayList<ArrayList<ArrayList<Double>>>();
+    public static ArrayList<ArrayList<ArrayList<Double>>> humanVehicleDelaysExcludingStops = new ArrayList<ArrayList<ArrayList<Double>>>();
+    public static double timeForNextIndex = 0;
+    public static double currentTimeForTimeChecking = 0;
+    public static int vehicleTimesSecondsIndexStep = 60;
+    public static int currentTimeIndex = -1;
+    //these 3 used for indexing into the lists above 
+    public static HashMap<Integer, Integer> vinToTimeIndex = new HashMap<Integer, Integer>();
+    public static HashMap<Integer, Constants.Direction> vinToSpawnDirection = new HashMap<Integer, Constants.Direction>();
+    public static HashMap<Constants.Direction, Integer> timingIndexMap = null;
+
+    public static EnumSet<Constants.Direction> directionsOfVehiclesStoppedNearBorder = EnumSet.noneOf(Constants.Direction.class);
+
+    public static double lateSpawns = 0;
+    public static String latenessString = "Dir, ScheduledTime, ActualTime, Difference\n";
+
+    private static long msStartTime;
+
     public static void main(String[] args) {
+        DateTimeFormatter dtf = DateTimeFormatter.ofPattern("HH:mm:ss, MM/dd");
+        System.out.println(dtf.format(LocalDateTime.now()));
+        msStartTime = System.currentTimeMillis();
 
         //parseArray("");
         //args = testArgs();
         //System.out.println(args.length + " - " + ARGS.values().length);
-        if (args.length != ARGS.values().length) {
+        if (args.length != ARGS.values().length && args.length != TRAFFIC_FILE_ARGS.values().length) {
             System.out.println("args.length observed = " + args.length);
             System.out.println("args.length required = " + ARGS.values().length);
-            SimConfig.signalType = SimConfig.SIGNAL_TYPE.TRADITIONAL;
-            RunVisual();
+            //SimConfig.signalType = SimConfig.SIGNAL_TYPE.TRADITIONAL;
+            SimConfig.signalType = SimConfig.SIGNAL_TYPE.FULLY_ACTUATED;
+            RunVisual(args);
+        } else if (args.length == TRAFFIC_FILE_ARGS.values().length) {
+            exprType = ExprType.DESIGNATED_LANES_WITH_ARCH;
+            RunTurnCountArchFileExperiment(args);
         } else {
+            exprType = ExprType.DESIGNATED_LANES;
             RunExperiment(args);
         }
     }
@@ -138,6 +192,21 @@ public class DesignatedLanesExpr {
         SimConfig.RED_PHASE_LENGTH = 0.0;
     }
 
+    public static void initWithArchAndTurnCounts() {
+        ratioH = 1 - ratioAV - ratioCC - ratioACC;
+        SimConfig.MUST_STOP_BEFORE_INTERSECTION = false;
+        Util.resetRand(SEED);
+        maxQueueLength = 0;
+        maxTravelTimeH = 0;
+        maxTravelTimeAV = 0;
+        maxTravelTimeCC = 0;
+        maxTravelTimeACC = 0;
+
+        SimConfig.FULLY_OBSERVING = true;
+        Platoon.platooning = false;
+        SimConfig.RED_PHASE_LENGTH = 0.0;
+    }
+
     public static void spawnVehicles(double timeStep, AutoDriverOnlySimulator sim) {
 
         double humanProb = timeStep * VEHICLES_ROAD_SECOND * ratioH;
@@ -150,14 +219,14 @@ public class DesignatedLanesExpr {
         double[] turnProb = {ratioRIGHT, ratioSTRAIGHT, ratioLEFT};
         //For each road
         for (Road road : sim.getMap().getRoads()) {
-            //While prob of spawning any kind of car is graeter than random
+            //While prob of spawning any kind of car is graeter than RANDOM_NUM_GEN
             if (intersectionIsTypeT) {
                 if (road.getIndex() == 1) {
                     continue;
                 }
                 turnProb = getTurnProbForT(road);
             }
-            while (sum(typeProbs) > Util.random.nextDouble()) {
+            while (sum(typeProbs) > Util.RANDOM_NUM_GEN.nextDouble()) {
                 //Choose vehicle type according to the probability and reduce probability by 1. use proportionalPick(double[] possibilities)
                 int type = proportionalPick(typeProbs);
                 typeProbs[type] = Math.max(typeProbs[type] - 1, 0);
@@ -176,10 +245,39 @@ public class DesignatedLanesExpr {
                 Road destination = assignDestination(road, sim.getMap(), heading);
                 //Spawn vehicle
                 spawnVehicle(VEHICLE_TYPE.values()[type], asignedLane, destination, timeStep, sim);
+
             }
         }
         for (SpawnPoint spawnPoint : sim.getMap().getSpawnPoints()) {
             spawnPoint.advance(timeStep);
+        }
+
+    }
+
+    public static void spawnVehiclesWithInterArch(double timeStep, AutoDriverOnlySimulator sim) {
+        double humanProb = ratioH;
+        double CCProb = ratioCC;
+        double ACCProb = ratioCC;
+        double AVProb = ratioAV;
+
+        double[] typeProbs = {AVProb, humanProb, CCProb, ACCProb};
+        //For each road
+        for (Road road : sim.getMap().getRoads()) {
+            List<Lane> lanes = new ArrayList<Lane>(road.getLanes());
+            Collections.shuffle(lanes, Util.RANDOM_NUM_GEN);
+            for (Lane ln : lanes) {
+                if (sim.canSpawnVehicle(ln.getSpawnPoint())) {
+                    int type = proportionalPick(typeProbs);
+                    /*if (Util.getDirectionFromHeadingCardinal(road.getIndexLane().getInitialHeading()) == Direction.NORTH) {
+                        type = 0;
+                    } else {
+                        type = 1;
+                    }*/
+                    spawnVehicle(VEHICLE_TYPE.values()[type], ln.getSpawnPoint(), timeStep, sim);
+                } else {
+                    ln.getSpawnPoint().advance(timeStep);
+                }
+            }
         }
     }
 
@@ -187,18 +285,83 @@ public class DesignatedLanesExpr {
 
         SpawnPoint spawnPoint = asignedLane.getSpawnPoint();
         SpawnPoint.SpawnSpec spawnSpec = spawnPoint.act(timeStep, type, destination);
+        if (spawnSpec != null) {
+            VehicleSimView vehicle = sim.makeVehicle(spawnPoint, spawnSpec);
+            VinRegistry.registerVehicle(vehicle); // Get vehicle a VIN number
 
-        VehicleSimView vehicle = sim.makeVehicle(spawnPoint, spawnSpec);
-        VinRegistry.registerVehicle(vehicle); // Get vehicle a VIN number
+            sim.vinToVehicles.put(vehicle.getVIN(), vehicle);
+            spawnPoint.vehicleGenerated(); // so it knows a platooning vehicle is generated.
 
-        sim.vinToVehicles.put(vehicle.getVIN(), vehicle);
-        spawnPoint.vehicleGenerated(); // so it knows a platooning vehicle is generated.
+            sim.generatedVehicles++; // counter for vehicles generated}
+        }
+    }
 
-        sim.generatedVehicles++; // counter for vehicles generated
+    //version using SpawnSpecGenerator which picks the destination of the vehicle
+    private static void spawnVehicle(VEHICLE_TYPE type, SpawnPoint sp, double timeStep, AutoDriverOnlySimulator sim) {
+        //initialize indices tied to directions for consistency throughout application
+        if (timingIndexMap == null) {
+            timingIndexMap = new HashMap<Constants.Direction, Integer>();
+            int index = 0;
+            for (Constants.Direction dir : Constants.Direction.values()) {
+                timingIndexMap.put(dir, index++);
+            }
+        }
+
+        SpawnPoint spawnPoint = sp;
+        List<SpawnPoint.SpawnSpec> spawnSpecs = spawnPoint.act(timeStep, type);
+        if (!spawnSpecs.isEmpty()) {
+            VehicleSimView vehicle = sim.makeVehicle(spawnPoint, spawnSpecs.get(0));
+            VinRegistry.registerVehicle(vehicle); // Get vehicle a VIN number
+            vinToSpawnDirection.put(vehicle.getVIN(), Util.getDirectionFromHeadingCardinalOrIntercardinal(sp.getHeading()));
+
+            //ensure lists are ready for elements for timing tracking
+            while (vehicle.gaugeTime() >= timeForNextIndex) {
+                currentTimeIndex++;
+                timeForNextIndex += vehicleTimesSecondsIndexStep;
+            }
+            while (autoVehicleTimesByDirection.size() <= currentTimeIndex) {
+                ArrayList<ArrayList<Double>> listOfListsByDirectionIndex = new ArrayList<ArrayList<Double>>();
+                ArrayList<ArrayList<Double>> listOfListsByDirectionIndexDelay = new ArrayList<ArrayList<Double>>();
+                ArrayList<ArrayList<Double>> listOfListsByDirectionIndexDelayNoInter = new ArrayList<ArrayList<Double>>();
+                ArrayList<ArrayList<Double>> listOfListsByDirectionIndexNoStops = new ArrayList<ArrayList<Double>>();
+                autoVehicleTimesByDirection.add(listOfListsByDirectionIndexDelay);
+                autoVehicleDelaysByDirection.add(listOfListsByDirectionIndex);
+                autoVehicleDelaysByDirectionNoInter.add(listOfListsByDirectionIndexDelayNoInter);
+                autoVehicleDelaysExcludingStops.add(listOfListsByDirectionIndexNoStops);
+                for (int i = 0; i < timingIndexMap.keySet().size(); ++i) {
+                    listOfListsByDirectionIndex.add(new ArrayList<Double>());
+                    listOfListsByDirectionIndexDelay.add(new ArrayList<Double>());
+                    listOfListsByDirectionIndexDelayNoInter.add(new ArrayList<Double>());
+                    listOfListsByDirectionIndexNoStops.add(new ArrayList<Double>());
+                }
+            }
+            while (humanVehicleTimesByDirection.size() <= currentTimeIndex) {
+                ArrayList<ArrayList<Double>> listOfListsByDirectionIndex = new ArrayList<ArrayList<Double>>();
+                ArrayList<ArrayList<Double>> listOfListsByDirectionIndexDelay = new ArrayList<ArrayList<Double>>();
+                ArrayList<ArrayList<Double>> listOfListsByDirectionIndexDelayNoInter = new ArrayList<ArrayList<Double>>();
+                ArrayList<ArrayList<Double>> listOfListsByDirectionIndexNoStops = new ArrayList<ArrayList<Double>>();
+                humanVehicleTimesByDirection.add(listOfListsByDirectionIndexDelay);
+                humanVehicleDelaysByDirection.add(listOfListsByDirectionIndex);
+                humanVehicleDelaysByDirectionNoInter.add(listOfListsByDirectionIndexDelayNoInter);
+                humanVehicleDelaysExcludingStops.add(listOfListsByDirectionIndexNoStops);
+                for (int i = 0; i < timingIndexMap.keySet().size(); ++i) {
+                    listOfListsByDirectionIndex.add(new ArrayList<Double>());
+                    listOfListsByDirectionIndexDelay.add(new ArrayList<Double>());
+                    listOfListsByDirectionIndexDelayNoInter.add(new ArrayList<Double>());
+                    listOfListsByDirectionIndexNoStops.add(new ArrayList<Double>());
+                }
+            }
+            vinToTimeIndex.put(vehicle.getVIN(), currentTimeIndex);
+
+            sim.vinToVehicles.put(vehicle.getVIN(), vehicle);
+            spawnPoint.vehicleGenerated(); // so it knows a platooning vehicle is generated.
+
+            sim.generatedVehicles++; // counter for vehicles generated}
+        }
     }
 
     private static int proportionalPick(double[] possibilities) {
-        double r = Util.random.nextDouble() * sum(possibilities);
+        double r = Util.RANDOM_NUM_GEN.nextDouble() * sum(possibilities);
         //if r is bigger than [0]/sum then 0 if r is bigger than [0]+[1]/sum then 1 and so on
         for (int i = 0; i < possibilities.length; i++) {
             if (r < sum(possibilities, 0, i)) {
@@ -262,7 +425,7 @@ public class DesignatedLanesExpr {
         }
         return best;
     }
-
+    
     private static double sum(double[] arr, int from, int to) {
         double ans = 0;
         for (int i = from; i <= to; i++) {
@@ -275,14 +438,15 @@ public class DesignatedLanesExpr {
         return sum(arr, 0, arr.length - 1);
     }
 
-    private static void RunVisual() {
+    private static void RunVisual(String[] args) {
 
         init();
         if (intersectionIsTypeT) {
             TurnPolicies.initPolicyT();
         }
         final String dir = System.getProperty("user.dir") + "/src/main/java/6phases";
-        String trafficSignalPhaseFileName = dir + "/Optimized-4way-120.csv";
+        //String trafficSignalPhaseFileName = dir + "/Optimized-4way-120.csv";
+        String trafficSignalPhaseFileName = "./exp/signal.xml";
         if (intersectionIsTypeT) {
             trafficSignalPhaseFileName = dir + "/AIM4Phases-Balanced-T.csv";
         }
@@ -294,24 +458,32 @@ public class DesignatedLanesExpr {
                         SPEED_LIMIT, // speed limit
                         NUMBER_OF_LANES, // lanes per road
                         1, // median size
-                        150, // distance between
+                        250, // distance between
                         0, // traffic level
                         // (for now, it can be any number)
-                        1.0 // stop distance before intersection
+                        1.0, // stop distance before intersection
+                        null
                 );
 
         BasicSimSetup basicSimSetup2 = null;
         // ReservationGridManager.Config fcfsPolicyConfig = null;
 
+        //Current there is no way to specify restricted spawn lanes in the GUI
+        /*ApproxNPhasesTrafficSignalSimSetup approxNPhasesTrafficSignalSimSetup
+                = new ApproxNPhasesTrafficSignalSimSetup(basicSimSetup,
+                        trafficSignalPhaseFileName, null, null);*/
+        TurnMovements turnMovements = TrafficFlowReaderFactory.getMovementsFromFile(new File("./exp/turnmovements.csv"), ActionMappingFactory.getUDOTActionMapping());
         ApproxNPhasesTrafficSignalSimSetup approxNPhasesTrafficSignalSimSetup
                 = new ApproxNPhasesTrafficSignalSimSetup(basicSimSetup,
-                        trafficSignalPhaseFileName);
-        approxNPhasesTrafficSignalSimSetup.setTrafficVolume(trafficVolumeFileName);
+                        trafficSignalPhaseFileName, turnMovements, new File("./exp/intersection.xml"));
+        /*ApproxNPhasesTrafficSignalSimSetup approxNPhasesTrafficSignalSimSetup
+                = new ApproxNPhasesTrafficSignalSimSetup(basicSimSetup,
+                        trafficSignalPhaseFileName, turnMovements, new File("./exp/test/arch_same_small_big.xml"));*/
+        //approxNPhasesTrafficSignalSimSetup.setTrafficVolume(trafficVolumeFileName);
         approxNPhasesTrafficSignalSimSetup.setTrafficLevel(0);
         basicSimSetup2 = approxNPhasesTrafficSignalSimSetup;
 
         Debug.SHOW_VEHICLE_COLOR_BY_MSG_STATE = false;
-
         V2IPilot.DEFAULT_STOP_DISTANCE_BEFORE_INTERSECTION = 1.0;
 
         new Viewer(basicSimSetup2, true);
@@ -462,7 +634,7 @@ public class DesignatedLanesExpr {
         SAFETY_BUFFER_SECONDS = Double.parseDouble(args[ARGS.SAFETY_BUFFER_SECONDS.toint()]);
 
         init();
-        //System.out.println("designated = " + DESIGNATED_LANES);
+        //System.out.println("designated = " + exprType);
 
         //System.out.println("args machine name = " + args[ARGS.MACHINE_NAME.toint()]);
         String outfilePath = null;
@@ -483,7 +655,7 @@ public class DesignatedLanesExpr {
         for (int j = 0; j < args.length; j++) {
             header += (ARGS.values()[j] + ",");
         }
-        header += "Completed H,Completed SAV,Completed AV,AVG time H,AVG time SAV,AVG time AV,AVG time all,AVG delay H,AVG delay SAV,AVG delay AV,AVG delay all, MAX time H, MAX time CC, MAX time ACC, MAX time AV, Rejections H, Rejections SAV, Rejections AV, Max queue\n";
+        header += "Completed H,Completed SAV,Completed AV,AVG time H,AVG time SAV,AVG time AV,AVG time all,AVG delay H,AVG delay SAV,AVG delay AV,AVG delay all, MAX time H, MAX time CC, MAX time ACC, MAX time AV, Rejections H, Rejections SAV, Rejections AV, Max queue, Time MAX H Completion, Time MAX CC Completion, Time MAX ACC Completion, Time MAX AV Completion\n";
         //System.out.print(header);
         File f = new File(outfilePath + outfile);
         if (!f.exists()) {
@@ -528,7 +700,8 @@ public class DesignatedLanesExpr {
                         150, // distance between
                         0, // traffic level
                         // (for now, it can be any number)
-                        1.0 // stop distance before intersection
+                        1.0, // stop distance before intersection
+                        null
                 );
 
         BasicSimSetup basicSimSetup2 = null;
@@ -601,7 +774,8 @@ public class DesignatedLanesExpr {
 // String header = "args...,Completed H,Completed SAV,Completed AV,AVG time H,
 //AVG time SAV,AVG time AV,AVG time all,AVG delay H,AVG delay SAV,AVG delay AV,
 //AVG delay all, MAX time H, MAX time CC, MAX time ACC, MAX time AV, Rejections H,
-//Rejections SAV, Rejections AV, Max queue\n";
+//Rejections SAV, Rejections AV, Max queue, Time MAX H Completion, Time MAX CC Completion, 
+//Time MAX ACC Completion, Time MAX AV Completion\n";
         output
                 += Htotal + ","
                 + SAVtotal + ","
@@ -621,8 +795,11 @@ public class DesignatedLanesExpr {
                 + avgRH + ","
                 + avgRSAV + ","
                 + avgRAV + ","
-                + maxQueueLength + "\n";
-
+                + maxQueueLength + ","
+                + timeMaxTravelHCompletion + ","
+                + timeMaxTravelCCCompletion + ","
+                + timeMaxTravelACCCompletion + ","
+                + timeMaxTravelAVCompletion + "\n";
         //System.gc();
         System.out.println();
         try {
@@ -633,6 +810,287 @@ public class DesignatedLanesExpr {
                 Files.write(Paths.get(outfilePath + outfile), output.getBytes(), StandardOpenOption.APPEND);
             } catch (IOException e2) {
                 System.out.println("Could not create file " + outfile);
+            }
+        }
+
+    }
+
+    public enum TRAFFIC_FILE_ARGS {
+
+        SEED_FOR_RANDOM(0),
+        RATIO_AV(1),
+        RATIO_CC(2),
+        RATIO_ACC(3),
+        OUT_FILE_PATH(4),
+        SCENARIO_INDEX(5),
+        SAFETY_BUFFER_SECONDS(6),
+        EXIT_TILE_SAFETY_BUFFER_SECONDS(7),
+        SIGNAL_PHASE_FILE(8),
+        TURNING_COUNT_FILE_PATH(9),
+        ARCHITECTURE_FILE_PATH(10),
+        ALLOW_ACTUATION(11),
+        USE_ADAPTIVE_TIMING(12);
+
+        private int index;
+
+        //Constructor which will initialize the enum
+        TRAFFIC_FILE_ARGS(int i) {
+            index = i;
+        }
+
+        //method to return the index set by the user which initializing the enum
+        public int toint() {
+            return index;
+        }
+    }
+
+    private static void RunTurnCountArchFileExperiment(String[] args) {
+        SimConfig.ALLOW_ACTUATION = Boolean.parseBoolean(args[TRAFFIC_FILE_ARGS.ALLOW_ACTUATION.toint()]);
+
+        for (int i = 0; i < args.length; i++) {
+            System.out.println(TRAFFIC_FILE_ARGS.values()[i] + " = " + args[i]);
+        }
+
+        SEED = Integer.parseInt(args[TRAFFIC_FILE_ARGS.SEED_FOR_RANDOM.toint()]);
+        SimConfig.USE_ADAPTIVE_TIMING = Boolean.parseBoolean(args[TRAFFIC_FILE_ARGS.USE_ADAPTIVE_TIMING.toint()]);
+
+        SimConfig.signalType = SimConfig.SIGNAL_TYPE.FULLY_ACTUATED;
+
+        ratioAV = Double.parseDouble(args[TRAFFIC_FILE_ARGS.RATIO_AV.toint()]);
+        ratioCC = Double.parseDouble(args[TRAFFIC_FILE_ARGS.RATIO_CC.toint()]);
+        ratioACC = Double.parseDouble(args[TRAFFIC_FILE_ARGS.RATIO_ACC.toint()]);
+
+        String outfilePath = args[TRAFFIC_FILE_ARGS.OUT_FILE_PATH.toint()];
+
+        dropMessageProb = 0;
+        droppedTimeToDetect = 0;
+
+        int i = Integer.parseInt(args[TRAFFIC_FILE_ARGS.SCENARIO_INDEX.toint()]);
+        if (i == -1) {
+            VEHICLES_LANE_HOUR = 50;
+            args[ARGS.VEHICLES_LANE_HOUR.toint()] = "50";
+            ratioAV = 1;
+            ratioCC = 0;
+            ratioACC = 0;
+        }
+
+        SAFETY_BUFFER_SECONDS = Double.parseDouble(args[TRAFFIC_FILE_ARGS.SAFETY_BUFFER_SECONDS.toint()]);
+        EXIT_TILE_SAFETY_BUFFER_SECONDS = Double.parseDouble(args[TRAFFIC_FILE_ARGS.EXIT_TILE_SAFETY_BUFFER_SECONDS.toint()]);
+
+        initWithArchAndTurnCounts();
+
+        String header = "";
+        for (int j = 0; j < args.length; j++) {
+            header += (TRAFFIC_FILE_ARGS.values()[j] + ",");
+        }
+        header += "Completed H,Completed SAV,Completed AV,AVG time H,AVG time SAV,AVG time AV,AVG time all,MAX time H, MAX time CC, MAX time ACC, MAX time AV, Rejections H, Rejections SAV, Rejections AV, Max queue, Time MAX H Completion, Time MAX CC Completion, Time MAX ACC Completion, Time MAX AV Completion,Late Spawns,Spillbacks Likely,Avg AV Delay,Avg HV Delay,Avg AV&HV Delay\n";
+        File f = new File(outfilePath);
+        if (!f.exists()) {
+
+            try {
+                Files.write(Paths.get(outfilePath), header.getBytes(), StandardOpenOption.CREATE);
+            } catch (IOException e2) {
+                System.out.println("Could not create file " + outfilePath);
+            }
+        }
+
+        //a lot of this gets overwritten by the interarch, signal, and turn policy files
+        BasicSimSetup basicSimSetup
+                = new BasicSimSetup(1, // columns
+                        1, // rows
+                        4, // lane width
+                        SPEED_LIMIT, // speed limit
+                        DesignatedLanesExpr.NUMBER_OF_LANES, // lanes per road
+                        1, // median size
+                        250, // distance between
+                        0, // traffic level
+                        // (for now, it can be any number)
+                        1.0, // stop distance before intersection
+                        null
+                );
+
+        BasicSimSetup basicSimSetup2 = null;
+
+        TurnMovements turnMovements = TrafficFlowReaderFactory.getMovementsFromFile(new File(args[TRAFFIC_FILE_ARGS.TURNING_COUNT_FILE_PATH.toint()]), ActionMappingFactory.getUDOTActionMapping());
+        ApproxNPhasesTrafficSignalSimSetup approxNPhasesTrafficSignalSimSetup
+                = new ApproxNPhasesTrafficSignalSimSetup(basicSimSetup,
+                        args[TRAFFIC_FILE_ARGS.SIGNAL_PHASE_FILE.toint()], turnMovements, new File(args[TRAFFIC_FILE_ARGS.ARCHITECTURE_FILE_PATH.toint()]));
+        approxNPhasesTrafficSignalSimSetup.setTrafficLevel(0);
+        basicSimSetup2 = approxNPhasesTrafficSignalSimSetup;
+
+        Debug.SHOW_VEHICLE_COLOR_BY_MSG_STATE = false;
+
+        V2IPilot.DEFAULT_STOP_DISTANCE_BEFORE_INTERSECTION = 1.0;
+        /////////////////////////////////
+        // Run the simulator
+        /////////////////////////////////
+        System.out.println("Running simulation");
+        Simulator sim = basicSimSetup2.getSimulator();
+        // run the simulator
+        double currentTime = 0.0;
+        //int nextTimestampUpdateMult = 0;
+        //int nextUpdateMult = 1;
+
+        double secondsForUpdate = 3600;
+        double secondsForMinorTickUpdate = 450;
+        //double timestampUpdatePercentage = 0.10;
+        //double inBetweenTicksPercentage = 0.01;
+        SimConfig.TOTAL_SIMULATION_TIME = 0;
+        //calculating the next update to be printed by total time * percentage of time that should pass before update * next update number (starting at 1 and 0, depending on the update type).
+        //double nextUpdate = SimConfig.TOTAL_SIMULATION_TIME * inBetweenTicksPercentage * nextUpdateMult;
+        double nextUpdate = secondsForMinorTickUpdate;
+        //double nextTimestampUpdate = SimConfig.TOTAL_SIMULATION_TIME * timestampUpdatePercentage * nextTimestampUpdateMult;
+        double nextTimestampUpdate = secondsForUpdate;
+        System.out.println("Reporting progress at: " + secondsForUpdate + "s and " + secondsForMinorTickUpdate + "s.");
+        while (sim.getNumCompletedVehicles() < turnMovements.getTotal()) {
+            //prioritizes timestamp updates
+            if (currentTime >= nextTimestampUpdate) {
+                System.out.print("[" + currentTime + "]\n");
+                System.out.flush();
+                nextUpdate += secondsForMinorTickUpdate;
+                nextTimestampUpdate += secondsForUpdate;
+                //nextTimestampUpdateMult++;
+                //nextUpdateMult++;
+                //nextTimestampUpdate = SimConfig.TOTAL_SIMULATION_TIME * timestampUpdatePercentage * nextTimestampUpdateMult;
+                //nextUpdate = SimConfig.TOTAL_SIMULATION_TIME * inBetweenTicksPercentage * nextUpdateMult;
+            } else if (currentTime >= nextUpdate) {
+                System.out.print(".");
+                System.out.flush();
+                nextUpdate += secondsForMinorTickUpdate;
+                //nextUpdateMult++;
+                //nextUpdate = SimConfig.TOTAL_SIMULATION_TIME * inBetweenTicksPercentage * nextUpdateMult;
+            }
+            Debug.clearShortTermDebugPoints();
+            sim.step(SimConfig.TIME_STEP);
+            currentTime += SimConfig.TIME_STEP;
+            SimConfig.TOTAL_SIMULATION_TIME = currentTime;
+            if (turnMovements.getExpectedSpawnsUpToEndOfTimeSlot(currentTime) != (sim.getGeneratedVehiclesNum() + sim.getScheduledVehiclesRemaining())) {
+                throw new RuntimeException("Simulation failed at time: " + currentTime + " Number of vehicles spawned and/or scheduled are not the expected numbers of vehicles.\n"
+                        + "Expected by end of time slot: " + turnMovements.getExpectedSpawnsUpToEndOfTimeSlot(currentTime) + "\n"
+                        + "Number currently spawned and/or scheduled: " + (sim.getGeneratedVehiclesNum() + sim.getScheduledVehiclesRemaining()));
+            }
+        }
+        /////////////////////////////////
+        // Generate data files
+        /////////////////////////////////
+        System.out.printf("%s: done.\n", DesignatedLanesExpr.class);
+        DateTimeFormatter dtf = DateTimeFormatter.ofPattern("HH:mm:ss, MM/dd");
+        System.out.println(dtf.format(LocalDateTime.now()));
+        long nowTime = System.currentTimeMillis();
+        System.out.println("Milliseconds elapsed: " + (nowTime-msStartTime));
+        System.out.println("Converted to seconds: " + (nowTime-msStartTime)/1000.0);
+        System.out.println("Converted to minutes: " + (nowTime-msStartTime)/1000.0/60.0);
+        System.out.println("Converted to hours: " + (nowTime-msStartTime)/1000.0/60.0/60.0);
+
+        double avgTH = -1;
+        double avgTSAV = -1;
+        double avgTAV = -1;
+        double avgRH = -1;
+        double avgRSAV = -1;
+        double avgRAV = -1;
+
+        if (Htotal > 0) {
+            avgTH = HtotalTime / Htotal;
+            avgRH = Hrejects / Htotal;
+        }
+        if (SAVtotal > 0) {
+            avgTSAV = SAVtotalTime / SAVtotal;
+            avgRSAV = SAVrejects / SAVtotal;
+        }
+        if (AVtotal > 0) {
+            avgTAV = AVtotalTime / AVtotal;
+            avgRAV = AVrejects / AVtotal;
+        }
+        double avgTall = (AVtotalTime + HtotalTime + SAVtotalTime) / (AVtotal + Htotal + SAVtotal);
+
+        String spillbackLikely = "";
+        for (Constants.Direction dir : directionsOfVehiclesStoppedNearBorder) {
+            spillbackLikely += dir.name() + ";";
+        }
+
+        String output = "";
+        for (int j = 0; j < args.length; j++) {
+            output += (args[j] + ",");
+        }
+// String header = "args...,Completed H,Completed SAV,Completed AV,AVG time H,
+//AVG time SAV,AVG time AV,AVG time all,AVG delay H,AVG delay SAV,AVG delay AV,
+//AVG delay all, MAX time H, MAX time CC, MAX time ACC, MAX time AV, Rejections H,
+//Rejections SAV, Rejections AV, Max queue, Time MAX H Completion, Time MAX CC Completion, 
+//Time MAX ACC Completion, Time MAX AV Completion, Late Spawns\n";
+        LimitedPairImplementation<Double, Integer> avPair = calcDelay(autoVehicleDelaysByDirection);
+        LimitedPairImplementation<Double, Integer> hvPair = calcDelay(humanVehicleDelaysByDirection);
+
+        output
+                += Htotal + ","
+                + SAVtotal + ","
+                + AVtotal + ","
+                + avgTH + ","
+                + avgTSAV + ","
+                + avgTAV + ","
+                + avgTall + ","
+                + maxTravelTimeH + ","
+                + maxTravelTimeCC + ","
+                + maxTravelTimeACC + ","
+                + maxTravelTimeAV + ","
+                + avgRH + ","
+                + avgRSAV + ","
+                + avgRAV + ","
+                + maxQueueLength + ","
+                + timeMaxTravelHCompletion + ","
+                + timeMaxTravelCCCompletion + ","
+                + timeMaxTravelACCCompletion + ","
+                + timeMaxTravelAVCompletion + ","
+                + lateSpawns + ","
+                + spillbackLikely + ","
+                + (avPair.getKey() / avPair.getValue()) + ","
+                + (hvPair.getKey() / hvPair.getValue()) + ","
+                + (avPair.getKey() + hvPair.getKey()) / (avPair.getValue() + hvPair.getValue()) + "\n";
+
+        //System.gc();
+        System.out.println();
+        boolean printed = false;
+        int attemptsLeft = 75;
+        while (!printed && attemptsLeft > 0) {
+            try {
+                Files.write(Paths.get(outfilePath), output.getBytes(), StandardOpenOption.APPEND);
+                printed = true;
+
+                /*outputVehicleTimeCounts(autoVehicleTimesByDirection, outfilePath, "auto_");
+                outputVehicleTimeCounts(humanVehicleTimesByDirection, outfilePath, "human_");
+                outputVehicleTimeCounts(autoVehicleDelaysByDirection, outfilePath, "auto_delays_");
+                outputVehicleTimeCounts(humanVehicleDelaysByDirection, outfilePath, "human_delays_");
+                outputVehicleTimeCounts(autoVehicleDelaysByDirectionNoInter, outfilePath, "auto_delays_noInter_");
+                outputVehicleTimeCounts(humanVehicleDelaysByDirectionNoInter, outfilePath, "human_delays_noInter_");
+                outputVehicleTimeCounts(autoVehicleDelaysExcludingStops, outfilePath, "auto_delays_noInter_noStop_");
+                outputVehicleTimeCounts(humanVehicleDelaysExcludingStops, outfilePath, "human_delays_noInter_noStop_");
+
+                String latenessPath = "lateness.csv";
+                if (outfilePath.endsWith(".csv")) {
+                    latenessPath = outfilePath.substring(0, outfilePath.length() - 4) + "_lateness.csv";
+                }
+                try {
+                    Files.write(Paths.get(latenessPath), latenessString.getBytes(), StandardOpenOption.CREATE);
+                } catch (IOException e1) {
+                    System.out.println("Could not create file " + latenessPath + ", dumping to std out: ");
+                    System.out.println(latenessString);
+                }*/
+            } catch (IOException e1) {
+                try {
+                    Files.write(Paths.get(outfilePath), header.getBytes(), StandardOpenOption.CREATE);
+                    Files.write(Paths.get(outfilePath), output.getBytes(), StandardOpenOption.APPEND);
+                } catch (IOException e2) {
+                    System.out.println("Could not create/append file " + outfilePath);
+                }
+            }
+            attemptsLeft--;
+            if (!printed && attemptsLeft > 0) {
+                try {
+                    //sleep and try again
+                    //not this shouldn't affect any part of the simulation, as this occurs after the simulation has completed.
+                    Thread.sleep((long) (Util.RANDOM_NUM_GEN.nextDouble() * 4000));
+                } catch (InterruptedException ex) {
+                    Logger.getLogger(DesignatedLanesExpr.class.getName()).log(Level.SEVERE, null, ex);
+                }
             }
         }
 
@@ -658,6 +1116,57 @@ public class DesignatedLanesExpr {
             return contains(TurnPolicies.getPolicy_T(SimConfig.VEHICLE_TYPE.HUMAN.ordinal(), heading, road), laneIndex);
         }
         return false;
+    }
+
+    public static LimitedPairImplementation<Double, Integer> calcDelay(ArrayList<ArrayList<ArrayList<Double>>> delays) {
+        double val = 0;
+        int count = 0;
+        for (ArrayList<ArrayList<Double>> midList : delays) {
+            for (ArrayList<Double> innerList : midList) {
+                for (Double delay : innerList) {
+                    val += delay;
+                    ++count;
+                }
+            }
+        }
+        return new LimitedPairImplementation(val, count);
+    }
+
+    public static void outputVehicleTimeCounts(ArrayList<ArrayList<ArrayList<Double>>> timings, String outputPath, String ident) {
+        //todo ineffecient way of building the string by repeatedly concating
+        String fileOutHead = "Index,veh count,total time,avg time,,data\n";
+        for (Constants.Direction dir : Constants.Direction.values()) {
+            int totalDirectionVehicleCount = 0;
+            int listIndex = timingIndexMap.get(dir);
+            String fileOut = "";
+            for (int i = 0; i < currentTimeIndex + 1; ++i) {
+                int vehicleCount = 0;
+                double total = 0;
+                String data = "";
+                //todo ineffecient way of building the string by repeatedly concating
+                for (Double vehTime : timings.get(i).get(listIndex)) {
+                    vehicleCount++;
+                    totalDirectionVehicleCount++;
+                    total += vehTime;
+                    data += vehTime + ",";
+                }
+                fileOut += i + "," + vehicleCount + "," + total + "," + ((double) total / (double) vehicleCount) + ",," + (data.length() > 0 ? data.substring(0, data.length() - 1) : "") + "\n"; //on the data inclusion, cut the comma of the end if it has any data, otherwise ignore it entirely
+            }
+
+            if (totalDirectionVehicleCount > 0) {
+                fileOut = "Veh count:, " + totalDirectionVehicleCount + "," + "Seconds per row:," + vehicleTimesSecondsIndexStep + ",\n" + fileOutHead + fileOut;
+                String timingOutPath = ident + "timing_" + dir.toString() + ".csv";
+                if (outputPath.endsWith(".csv")) {
+                    timingOutPath = outputPath.substring(0, outputPath.length() - 4) + "_" + ident + "timing_" + dir.toString() + ".csv";
+                }
+
+                try {
+                    Files.write(Paths.get(timingOutPath), fileOut.getBytes(), StandardOpenOption.CREATE);
+                } catch (IOException e1) {
+                    System.out.println("Could not create file " + outputPath);
+                }
+            }
+        }
     }
 
 //    public static boolean leftAllowed(int index) {
@@ -711,18 +1220,6 @@ public class DesignatedLanesExpr {
             }
         }
         return null;
-    }
-
-    public static List<Lane> possibleDestinationsH(Lane currentLane) {
-        List<Lane> ans = new ArrayList<Lane>();
-        Road currentRoad = Debug.currentMap.getRoad(currentLane);
-        for (int heading = 0; heading < 3; heading++) {
-            if (turnAllowed(currentLane.getIndexInRoad(), heading, currentRoad)) {
-                Road r = nextRoad(currentRoad, heading);
-                ans.add(r.getLanes().get(currentLane.getIndexInRoad()));
-            }
-        }
-        return ans;
     }
 
     public static void checkIfValid() {

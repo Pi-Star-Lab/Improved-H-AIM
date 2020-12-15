@@ -24,7 +24,7 @@ public class Platoon {
    * @return
    */
   public static int generateVehiclesNum() {
-  	Double rand = Util.random.nextDouble();
+  	Double rand = Util.RANDOM_NUM_GEN.nextDouble();
   	int offset;
   	
   	if (rand < .68) {
@@ -38,7 +38,7 @@ public class Platoon {
   	}
   	
   	// Decide left side or right side
-  	if (Util.random.nextDouble() > .5) {
+  	if (Util.RANDOM_NUM_GEN.nextDouble() > .5) {
   		offset *= -1;
   	}
   	

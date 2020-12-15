@@ -1,0 +1,125 @@
+Changes:
+Removed a Desktop services store file from the root of the repository.
+Modified the NB actions xml for running with the updated simulator. Specific changes may be viewed in the git diff.
+Added the nbproject/private/profiler/settings.xml.
+Removed the octave-core file in the root of the repository.
+Removed plotting/.DS_Store
+Removed plotting.delay.py
+Removed plotting/eff_spawn_rate_batch.py
+Removed plotting/octave-core
+Modified the pom.xml formatting. Specific changes may be viewed in the git diff.
+Removed Run-3way.py.
+Removed Run-4way.py.
+Amended src/main/java/aim4/config/Constants.java, primarily adding new constants related to turn directions, cardinal/intercardinal directions, and angles for solving directions. Added applicable imports.
+Amended src/main/java/aim4/config/Debug.java to make CAN_CHANGE_LANE non-final.
+Amended src/main/java/aim4/config/Platoon.java to use the name "RANDOM_NUM_GEN" rather than "random" for the static random number generator.
+Amended src/main/java/aim4/config/Resources.java to swap TrafficSignalPhase for RingAndBarrier. Also adjusted imports, adjusted comments, and added maps for vehicles by ID.
+Added src/main/java/aim4/config/ringbarrier/ActuationExitPair.java.
+Added src/main/java/aim4/config/ringbarrier/ActuationTracker.java.
+Added src/main/java/aim4/config/ringbarrier/GapExtensionTable.java.
+Added src/main/java/aim4/config/ringbarrier/HistoricalRBSegmentInformation.java.
+Added src/main/java/aim4/config/ringbarrier/MaximumGreenTable.java.
+Added src/main/java/aim4/config/ringbarrier/RBPhaseBarrier.java.
+Added src/main/java/aim4/config/ringbarrier/RBPhaseSegment.java.
+Added src/main/java/aim4/config/ringbarrier/RBRing.java.
+Added src/main/java/aim4/config/ringbarrier/RBSegmentReadOnlyNoLockingView.java
+Added src/main/java/aim4/config/ringbarrier/RingAndBarrier.java
+Added src/main/java/aim4/config/ringbarrier/RingAndBarrierFactory.java
+Added src/main/java/aim4/config/ringbarrier/SignalRangeCheckComparablePair.java
+Added src/main/java/aim4/config/ringbarrier/SignalRangeCheckDTO.java
+Amended src/main/java/aim4/config/SimConfig.java with license text, a new signal type, actuation and adaptive timing flags, an early gapout flag (not in use), and flags regarding turns on red.
+Amended src/main/java/aim4/config/TrafficSginal.java to add variants of unknown/uncertain types.
+Removed src/main.java/aim4/config/TrafficSignalPhase.java
+Amended src/main/java/aim4/driver/AutoDriver.java to add import statements, flags members for recordkeeping, changed the constructor, and add new functionality.
+Amended src/main/java/aim4/driver/AutoDriverCoordinatorView.java to add two new functions to the interface to allow tracking of the entry lane for an intersection.
+Amended src/main/java/aim4/coordinator/V2ICoordinator.java to add new functionality.
+Amended src/main/java/aim4/driver/CrashTestDummy.java to reflect AutoDriverCoordinatorView interface changes.
+Amended src/main/java/aim4/driver/DriverSimView.java to reflect AutoDriverCoordinatorView interface changes.
+Amended src/main/java/aim4/navigator/BasicNavigator.java to handle pathing with vehicle type restrictions.
+Amended src/main/java/aim4/navigator/Navigator.java to handle pathing with vehicle type restrictions.
+Amended src/main/java/aim4/gui/Canvas.java to handle fully actuated signals and show lanes as being closed.
+Added src/main/java/aim4/gui/frame/signalvisualization/ActuatedSignalVisualizationRepresentation.java.
+Added src/main/java/aim4/gui/frame/signalvisualization/SignalVisualizationPanel.form.
+Added src/main/java/aim4/gui/frame/signalvisualization/SignalVisualizationPanel.java.
+Added src/main/java/aim4/gui/frame/signalvisualization/SignalVisualizationWindow.form.
+Added src/main/java/aim4/gui/frame/signalvisualization/SignalVisualizationWindow.form.
+Added src/main/java/aim4/gui/frame/signalvisualization/SignalVisualizationWindow.java.
+Amended src/main/java/aim4/gui/parampanel/AutoDriverOnlyParamPanel.java.
+Amended src/main/java/aim4/gui/SimSetupPanel.java.
+Amended src/main/java/aim4/gui/Viewer.java to support signal visualization.
+Amended src/main/java/aim4/im/Intersection.java to allow assignment of IMs to the intersection.
+Added src/main/java/aim4/im/intersectionarch/AllowedTurn.java.
+Added src/main/java/aim4/im/intersectionarch/ArchIntersection.java.
+Added src/main/java/aim4/im/intersectionarch/ArchIntersectionFactory.java.
+Added src/main/java/aim4/im/intersectionarch/ArchLaneSpec.java.
+Added src/main/java/aim4/im/intersectionarch/ArchRoadSpec.java.
+Amended src/main/java/aim4/im/IntersectionManager.java to support new functionality.
+Amended src/main/java/aim4/im/LaneTrafficController.java to use the name "RANDOM_NUM_GEN" rather than "random" for the static random number generator.
+Amended src/main/java/aim4/im/RoadBasedIntersection.java to support new functionality.
+Amended src/main/java/aim4/im/RoadBasedTrackModel.java to support new functionality.
+Amended src/main/java/aim4/im/TrackModel.java to support new functionality.
+Amended src/main/java/aim4/im/v2i/batch/RandomReordering.java to shuffle using the static random number generator.
+Amended src/main/java/aim4/im/v2i/policy/BasePolicy.java to handle cutoff of time for proposals differently.
+Added src/main/java/aim4/im/v2i/RequestHandler/AbstractSignalControllerWithLaneID.java.
+Amended src/main/java/aim4/im/v2i/RequestHandler/ApproxNPhasesTrafficSignalRequestHandler.java to support new functionality, did a rework of approval of reservations.
+Added src/main/java/aim4/im/v2i/RequestHandler/FullyActuatedSignalController.java.
+Amended src/main/java/aim4/im/v2i/reservation/ReservationArray.java.
+Amended src/main/java/aim4/im/v2i/reservation/ReservationGrid.java.
+Amended src/main/java/aim4/im/v2i/reservation/ReservationGridManager.java.
+Amended src/main/java/aim4/im/v2i/V2IManager.java to support additional functionality.
+Amended src/main/java/aim4/Main.java to support additional functionality.
+Added src/main/java/aim4/map/actionmapping/ActionMappingFactory.java.
+Fixed a typo in src/main/java/aim4/map/BasicMap.java.
+Added src/main/java/aim4/map/destination/FileBasedDestinationSelector.java.
+Amended src/main/java/aim4/map/destination/RandomDestinationSelector.java to use the name "RANDOM_NUM_GEN" rather than "random" for the static random number generator.
+Amended src/main/java/aim4/map/destination/RatioDestinationSelector.java to use the name "RANDOM_NUM_GEN" rather than "random" for the static random number generator.
+Amended src/main/java/aim4/map/destination/TurnBasedDestinationSelector.java to fix a typo and use the name "RANDOM_NUM_GEN" rather than "random" for the static random number generator.
+Amended src/main/java/aim4/map/GridMap.java to support new functionality, and throw an error if multiple intersections were used (many code changes were made in such a way that they don't support multiple intersections).
+Amended src/main/java/aim4/map/GridMapUtil.java to support some new functionality.
+Added src/main/java/aim4/map/intersectionboard/DifferingLanesPerRoadBoard.java.
+Added src/main/java/aim4/map/intersectionboard/IntersectionBoard.java.
+Added src/main/java/aim4/map/intersectionboard/StandardIntersectionBoard.java.
+Amended src/main/java/aim4/map/lane/AbstractLane.java to support new functionality.
+Amended src/main/java/aim4/map/lane/Lane.java to support new functionality.
+Amended src/main/java/aim4/map/lane/LaneIM.java to support new functionality.
+Amended src/main/java/aim4/map/lane/LineSegmentLane.java to support new functionality.
+Amended src/main/java/aim4/map/Road.java to support new functionality.
+Amended src/main/java/aim4/map/SpawnPoint.java to support new functionality.
+Added src/main/java/aim4/map/trafficbyturns/DestinationFileSpawnSpecGenerator.java.
+Added src/main/java/aim4/map/trafficbyturns/FileSpawnSpecGenerator.java.
+Added src/main/java/aim4/map/trafficbyturns/LaneRestrictedFileSpawnSpecGenerator.java.
+Added src/main/java/aim4/map/trafficbyturns/SpawnScheduleInformation.java.
+Added src/main/java/aim4/map/trafficbyturns/TrafficFlowReaderFactory.java.
+Added src/main/java/aim4/map/trafficbyturns/TurnMovementCountForRoad.java.
+Added src/main/java/aim4/map/trafficbyturns/TurnMovements.java.
+Amended src/main/java/aim4/map/TrafficVolume.java to use the name "RANDOM_NUM_GEN" rather than "random" for the static random number generator.
+Amended src/main/java/aim4/msg/i2v/Reject.java.
+Amended src/main/java/aim4/msg/v2i/Request.java.
+Amended src/main/java/aim4/noise/GaussianNoiseFunction.java to use the static random number generator.
+Amended src/main/java/aim4/noise/UniformFixedNoiseFunction.java to use the name "RANDOM_NUM_GEN" rather than "random" for the static random number generator.
+Amended src/main/java/aim4/noise/UniformProportionalNoiseFunction.java to use the name "RANDOM_NUM_GEN" rather than "random" for the static random number generator.
+Amended src/main/java/aim4/sim/AutoDriverOnlySimulator.java to support new functionality.
+Amended src/main/java/aim4/sim/setup/Approx4PhasesTrafficSignalSimSetup.java to prepare to support new functionality.
+Amended src/main/java/aim4/sim/setup/ApproxNPhasesTrafficSignalSimSetup.java to support new functionality.
+Amended src/main/java/aim4/sim/setup/ApproxSimpleTrafficSignalSimSetup.java to prepare to support new functionality.
+Amended src/main/java/aim4/sim/setup/ApproxStopSignSimSetup.java to prepare to support new functionality.
+Amended src/main/java/aim4/sim/setup/AutoDriverOnlySimSetup.java to support new functionality.
+Amended src/main/java/aim4/sim/setup/BasicSimSetup.java to support new functionality.
+Amended src/main/java/aim4/sim/Simulator.java to support new functionality.
+Added src/main/java/aim4/util/LimitedPairImplementation.java in order to support some Java runtimes.
+Amended src/main/java/aim4/util/Util.java to support new functionality.
+src/main/java/aim4/vehicle/AutoVehicleDriverView.java has been modified.
+Amended src/main/java/aim4/vehicle/BasicAutoVehicle.java.
+Amended src/main/java/aim4/vehicle/ProxyVehicle.java to support new functionality.
+Amended src/main/java/aim4/vehicle/VehicleSimView.java.
+Removed everything in src/main/java/bin/.
+Amended src/main/java/expr/trb/DesignatedLanesExpr.java to support new functionality.
+Amended src/main/java/expr/trb/TrafficSignalExpr.java.
+Amended target/maven-archiver/pom.properties.
+Removed release-note.txt in the root of the repository.
+
+
+Added this changes file.
+
+Changed application version to 1.1a
+Amended the readme.md in the root of the repository.

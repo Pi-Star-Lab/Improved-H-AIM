@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<root>
+	<ring>
+            <!--Road direction outbound, flow ("f") turn (not currently used, right in US) cross ("c") turn (left in US) turn and/or through ("t"), gap timeout, min time, max time-->
+			<green>N, c, 5, 4, 35</green>
+            <yellow>N, c, 4</yellow>
+            <red>N, c, 3</red>
+            <green>S, t, 5, 4, 35</green>
+
+            <barrier id="b1"></barrier>
+			
+			<green>W, c, 1, 4, 15</green>
+            <yellow>W, c, 4</yellow>
+            <red>W, c, 3</red>
+            <green>E, t, 1, 4, 15</green>
+
+            <barrier id="b2"></barrier>
+	</ring>
+	<ring>
+			<green>S, c, 1, 4, 15</green>
+            <!--Alternative: Road direction outbound, actions, time (min time == max time, no gap)-->
+            <yellow>S, c, 4</yellow>
+            <red>S, c, 3</red>
+            <green>N, t, 1, 4, 15</green>
+            
+            <barrier id="b1"></barrier>
+            
+			<green>E, c, 1, 4, 15</green>
+            <yellow>E, c, 4</yellow>
+            <red>E, c, 3</red>
+            <green>W, t, 5, 4, 35</green>
+			
+            <barrier id="b2"></barrier>
+	</ring>
+	<!--yellow time, red time-->
+	<barrier id="b1">4, 3</barrier>
+	<barrier id="b2">4, 3</barrier>
+</root>
